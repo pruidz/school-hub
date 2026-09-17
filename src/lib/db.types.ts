@@ -361,6 +361,7 @@ export interface Database {
           topic: string | null
           notes: string | null
           slot_id: string | null
+          no_homework: boolean
           created_by: string | null
           created_at: string
           updated_at: string
@@ -373,6 +374,7 @@ export interface Database {
           topic?: string | null
           notes?: string | null
           slot_id?: string | null
+          no_homework?: boolean
           created_by?: string | null
           created_at?: string
           updated_at?: string
@@ -385,6 +387,7 @@ export interface Database {
           topic?: string | null
           notes?: string | null
           slot_id?: string | null
+          no_homework?: boolean
           created_by?: string | null
           created_at?: string
           updated_at?: string
