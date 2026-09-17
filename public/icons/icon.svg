@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192" role="img" aria-label="SCHOOL-HUB">
+  <rect width="192" height="192" rx="42" ry="42" fill="#4f46e5" />
+  <path
+    d="M56 100 L84 128 L140 66"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="18"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

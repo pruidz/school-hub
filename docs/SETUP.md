@@ -42,7 +42,19 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGci...
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+CHILD_AUTH_SECRET=
 ```
+
+`CHILD_AUTH_SECRET` — შენ თვითონ აგენერირებ, Supabase-თან კავშირი არ აქვს.
+ეს არის საიდუმლო, რომლითაც სერვერი ბავშვის შიდა პაროლს ითვლის (ბაზაში არ ინახება).
+დააგენერირე ასე და შედეგი ჩასვი:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
+```
+
+⚠️ ამ მნიშვნელობის შეცვლა ყველა ბავშვის ლოგინს გააუქმებს — მოწვევის კოდები ხელახლა
+გასაცემი გახდება. შეინახე პაროლის მენეჯერში.
 
 `.env.local` უკვე `.gitignore`-შია — git-ში არ მოხვდება.
 

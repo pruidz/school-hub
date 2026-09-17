@@ -32,18 +32,26 @@ src/lib/i18n/ka.ts           A2  creates it; others append keys only
 
 src/app/parent/schedule/*    A3
 src/app/parent/subjects/*    A3
+src/app/parent/children/*    A3  children CRUD, invite codes, ui_mode, PIN unlock
+src/app/parent/settings/*    A3
 src/app/kid/today/*          A3
+src/app/kid/me/*             A3
 src/features/schedule/*      A3
 src/features/lessons/*       A3
+src/features/children/*      A3
 
 src/app/parent/inbox/*       A4
 src/app/parent/assignments/* A4
 src/app/parent/review/*      A4
-src/app/kid/assignment/*     A4
+src/app/kid/assignments/*    A4  list at /, detail at /[id]
+src/app/kid/chat/*           A4  thread list
 src/features/assignments/*   A4
 src/features/attachments/*   A4
+src/features/messages/*      A4
 src/lib/images.ts            A4  client-side resize/compress
 ```
+Route naming is settled: `/kid/assignments` (list) and `/kid/assignments/[id]` (detail).
+`src/components/layout/nav-items.ts` already points at these — do not rename them.
 Shared files (`src/app/layout.tsx`, `globals.css`, `package.json`) — do not restructure.
 Need something outside your area? Say so in your report instead of editing it.
 
@@ -67,6 +75,20 @@ Need something outside your area? Say so in your report instead of editing it.
 - Mobile-first for everything under `/kid`; desktop-first for `/parent`.
 - Run `npx tsc --noEmit` and `npm run lint` before reporting done.
 
+## Gotchas
+- `next dev` appends a `nextjs-agent-rules` block to this file. Revert that before
+  you finish — do not commit it.
+- `src/lib/db.types.ts` is generated; never hand-edit it. Status constants live in
+  `src/lib/assignment-status.ts` (`ASSIGNMENT_STATUSES`, `ASSIGNMENT_TRANSITIONS`,
+  `REVIEWER_ONLY_TARGETS`, `STORAGE_BUCKET_EVIDENCE`) — import them from there.
+- A child has **SELECT only** on `children`. Anything writing `pin_*`, `invite_code`,
+  `ui_mode` or `show_own_stats` must go through a parent-authorised server action.
+- `grades` is invisible to children at the RLS level. Don't build kid UI for it.
+- `topic_mastery` is visible to a child only when `children.show_own_stats` is true.
+- Role is on `app_metadata.role` (unforgeable) with a `profiles.role` fallback;
+  use `requireParent()` / `requireChild()` from `@/lib/auth/session`.
+
 ## Not in scope for phase 1
-Realtime chat, notifications, reports/charts, topic mastery, grades, AI check.
-Leave the DB columns in place; do not build the UI.
+Realtime subscriptions, push/email notifications, reports and charts, topic mastery
+UI, grades UI, AI check. Per-assignment messaging IS in phase 1, but plain
+request/response — no realtime. Leave the other DB columns in place; do not build the UI.

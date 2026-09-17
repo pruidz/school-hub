@@ -1131,29 +1131,3 @@ export type SubjectUpdate = Database['public']['Tables']['subjects']['Update']
 export type ScheduleSlotUpdate = Database['public']['Tables']['schedule_slots']['Update']
 export type LessonUpdate = Database['public']['Tables']['lessons']['Update']
 export type AssignmentUpdate = Database['public']['Tables']['assignments']['Update']
-
-/** Every status, in machine order. Useful for filters and tabs. */
-export const ASSIGNMENT_STATUSES = [
-  'assigned',
-  'in_progress',
-  'submitted',
-  'approved',
-  'redo',
-] as const satisfies readonly AssignmentStatus[]
-
-/**
- * Transitions the database accepts (public.assignments_status_guard).
- * The UI must not offer anything outside this map.
- */
-export const ASSIGNMENT_TRANSITIONS: Record<AssignmentStatus, AssignmentStatus[]> = {
-  assigned: ['in_progress', 'submitted'],
-  in_progress: ['submitted'],
-  submitted: ['approved', 'redo'],
-  approved: ['redo', 'in_progress'], // parent-only correction
-  redo: ['in_progress'],
-}
-
-/** Transitions only a parent (or a helper with review rights) may perform. */
-export const REVIEWER_ONLY_TARGETS = ['approved', 'redo'] as const
-
-export const STORAGE_BUCKET_EVIDENCE = 'evidence' as const

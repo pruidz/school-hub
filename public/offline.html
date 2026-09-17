@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ka">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>ინტერნეტი გათიშულია · SCHOOL-HUB</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #171717;
+        --muted: #71717a;
+        --accent: #4f46e5;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0a0a0a;
+          --fg: #fafafa;
+          --muted: #a1a1aa;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 2rem 1.5rem;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, "Segoe UI", "Noto Sans Georgian", sans-serif;
+        text-align: center;
+      }
+      img {
+        width: 72px;
+        height: 72px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.375rem;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+      button {
+        margin-top: 0.5rem;
+        min-height: 3rem;
+        padding: 0 1.5rem;
+        border: 0;
+        border-radius: 0.75rem;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <img src="/icons/icon.svg" alt="" />
+    <h1>ინტერნეტი გათიშულია</h1>
+    <p>შეამოწმე კავშირი და სცადე თავიდან.</p>
+    <button type="button" onclick="location.reload()">თავიდან ცდა</button>
+  </body>
+</html>
