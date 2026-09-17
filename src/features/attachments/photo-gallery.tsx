@@ -35,6 +35,12 @@ export type PhotoGalleryProps = {
 const MIN_SCALE = 1;
 const MAX_SCALE = 6;
 
+/**
+ * `storage_path` -> signed URL. `null` marks a path that came back unsigned;
+ * a missing key means signing is still in flight.
+ */
+type SignedUrlMap = Record<string, string | null>;
+
 export function PhotoGallery({
   attachments,
   zoom = true,
@@ -53,32 +59,44 @@ export function PhotoGallery({
   );
 
   const pathKey = ordered.map((item) => item.storage_path).join("\n");
-  const [signed, setSigned] = React.useState<{
-    key: string;
-    urls: Record<string, string>;
-  } | null>(null);
+  const [urls, setUrls] = React.useState<SignedUrlMap>({});
   const [openIndex, setOpenIndex] = React.useState<number | null>(null);
 
-  // `null` means "still signing"; keying the result on the path list makes a
-  // changed gallery show the loading state again instead of stale tiles.
-  const urls = signed?.key === pathKey ? signed.urls : null;
+  /**
+   * Paths already asked for, so a re-render that adds one photo signs that one
+   * path instead of the whole list again. Kept in a ref because it must not
+   * itself re-trigger the effect.
+   */
+  const requestedRef = React.useRef<Set<string>>(new Set());
 
+  // The map is keyed per path and merged, never replaced: a `router.refresh()`
+  // after an upload adds the new path and leaves every thumbnail that is
+  // already signed on screen. An entry is a URL, `null` once signing came back
+  // without one, and absent while it is still in flight.
   React.useEffect(() => {
     const paths = pathKey ? pathKey.split("\n") : [];
-    if (paths.length === 0) return;
+    const missing = paths.filter((path) => !requestedRef.current.has(path));
+    if (missing.length === 0) return;
 
-    let cancelled = false;
-    getSignedUrls(paths)
+    for (const path of missing) requestedRef.current.add(path);
+
+    getSignedUrls(missing)
       .then((result) => {
-        if (!cancelled) setSigned({ key: pathKey, urls: result });
+        setUrls((current) => {
+          const next = { ...current };
+          for (const path of missing) next[path] = result[path] ?? null;
+          return next;
+        });
       })
       .catch(() => {
-        if (!cancelled) setSigned({ key: pathKey, urls: {} });
+        // Let a later render retry these rather than pinning them to "failed".
+        for (const path of missing) requestedRef.current.delete(path);
+        setUrls((current) => {
+          const next = { ...current };
+          for (const path of missing) next[path] = null;
+          return next;
+        });
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [pathKey]);
 
   if (ordered.length === 0) {
@@ -98,7 +116,8 @@ export function PhotoGallery({
         )}
       >
         {ordered.map((attachment, index) => {
-          const url = urls?.[attachment.storage_path];
+          const entry = urls[attachment.storage_path];
+          const url = entry ?? undefined;
           return (
             <li key={attachment.id}>
               <button
@@ -129,7 +148,7 @@ export function PhotoGallery({
                   </>
                 ) : (
                   <span className="grid aspect-square w-full place-items-center text-xs text-muted-foreground">
-                    {urls === null ? (
+                    {entry === undefined ? (
                       ka.attachments.loadingPhotos
                     ) : (
                       <ImageOff className="size-5" />
@@ -145,7 +164,7 @@ export function PhotoGallery({
       {zoom && openIndex !== null ? (
         <Lightbox
           attachments={ordered}
-          urls={urls ?? {}}
+          urls={urls}
           index={openIndex}
           onIndexChange={setOpenIndex}
           onClose={() => setOpenIndex(null)}
@@ -167,7 +186,7 @@ function Lightbox({
   onClose,
 }: {
   attachments: Attachment[];
-  urls: Record<string, string>;
+  urls: SignedUrlMap;
   index: number;
   onIndexChange: (next: number) => void;
   onClose: () => void;

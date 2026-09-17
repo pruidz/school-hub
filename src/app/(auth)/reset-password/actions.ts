@@ -52,6 +52,13 @@ export async function resetPasswordAction(
 
   if (!user) return fail(ka.auth.resetLinkInvalid);
 
+  // A child's account authenticates by PIN against a server-derived password they
+  // never see. Letting a signed-in child set a real password here would let them sign
+  // in at /login and walk straight past the PIN and its lockout. This route stays open
+  // to a signed-in user because the recovery link signs you in — so the guard is here.
+  const caller = await getSessionUser();
+  if (caller?.role === "child") return fail(ka.auth.resetNotForChild);
+
   const { error } = await supabase.auth.updateUser({
     password: parsed.data.password,
   });
@@ -66,6 +73,5 @@ export async function resetPasswordAction(
     return fail(ka.errors.generic);
   }
 
-  const session = await getSessionUser();
-  redirect(homePathForRole(session?.role ?? "parent"));
+  redirect(homePathForRole(caller?.role ?? "parent"));
 }

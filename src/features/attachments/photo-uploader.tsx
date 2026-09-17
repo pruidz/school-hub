@@ -15,6 +15,16 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Camera, ImagePlus, Loader2, RotateCcw, X } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ka, t } from "@/lib/i18n/ka";
@@ -91,6 +101,10 @@ export function PhotoUploader({
   /** Pending work, kept in a ref so the drain loop never races React state. */
   const queueRef = React.useRef<Item[]>([]);
   const previewsRef = React.useRef<string[]>([]);
+  /** Set by a successful upload, read once by the drain loop. */
+  const dirtyRef = React.useRef(false);
+  /** `existingCount` before this component uploaded anything. */
+  const [mountedExistingCount] = React.useState(existingCount);
 
   // Object URLs are per-item and must outlive re-renders, so they are revoked
   // once, on unmount, from a ref that every created URL is pushed onto.
@@ -108,12 +122,17 @@ export function PhotoUploader({
   }, []);
 
   // A finished upload is already an `attachments` row, so the parent screen
-  // counts it in `existingCount` after `router.refresh()`. Counting it here too
-  // would halve the real limit (6 photos would stop accepting files after 3).
+  // counts it in `existingCount` once the batch refresh lands. Adding it to
+  // that number as well would halve the real limit (6 photos would stop
+  // accepting files after 3), so the two are reconciled instead of summed:
+  // before the refresh the done tiles are counted on top of the count this
+  // component mounted with, after it `existingCount` is already ahead.
+  const doneCount = items.filter((item) => item.phase === "done").length;
+  const inFlightCount = items.filter(
+    (item) => item.phase !== "error" && item.phase !== "done",
+  ).length;
   const liveCount =
-    existingCount +
-    items.filter((item) => item.phase !== "error" && item.phase !== "done")
-      .length;
+    Math.max(existingCount, mountedExistingCount + doneCount) + inFlightCount;
   const remaining = Math.max(0, max - liveCount);
   const atLimit = remaining <= 0;
 
@@ -173,15 +192,18 @@ export function PhotoUploader({
           return;
         }
 
+        // The tile keeps its local object URL and stays on screen, so the
+        // child sees their own photo the instant it lands — the server render
+        // catching up later must not be what makes it appear.
         patch(item.id, {
           phase: "done",
           progress: 100,
           attachmentId: result.data.id,
           busy: false,
         });
+        dirtyRef.current = true;
 
         onUploaded?.();
-        router.refresh();
       } catch (error) {
         if (storagePath) await discardOrphanObjectAction(storagePath);
         patch(item.id, {
@@ -194,7 +216,7 @@ export function PhotoUploader({
         });
       }
     },
-    [onUploaded, patch, router, target],
+    [onUploaded, patch, target],
   );
 
   const drainQueue = React.useCallback(async () => {
@@ -210,7 +232,15 @@ export function PhotoUploader({
     } finally {
       runningRef.current = false;
     }
-  }, [runItem]);
+
+    // One refresh for the whole batch. Refreshing per file re-ran the detail
+    // queries, the signed URLs and the thread once per photo, and four photos
+    // meant four full RSC round trips on a phone.
+    if (dirtyRef.current) {
+      dirtyRef.current = false;
+      router.refresh();
+    }
+  }, [router, runItem]);
 
   /* --------------------------------------------------------------- pick --- */
 
@@ -383,15 +413,14 @@ export function PhotoUploader({
                 )}
               />
 
-              <button
-                type="button"
-                aria-label={ka.attachments.removePhoto}
-                disabled={item.busy}
-                onClick={() => void discard(item)}
-                className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-full bg-background/90 text-foreground shadow-sm disabled:opacity-50"
-              >
-                <X className="size-4" />
-              </button>
+              <RemovePhotoButton
+                // A queued or failed tile is nothing but a local preview, so
+                // it is dismissed without a prompt. An uploaded one is a row
+                // plus a stored object, and a mis-tap costs a re-shoot.
+                uploaded={item.attachmentId !== null}
+                busy={item.busy}
+                onRemove={() => void discard(item)}
+              />
 
               <div className="grid gap-1 p-2">
                 {item.phase === "error" ? (
@@ -428,5 +457,65 @@ export function PhotoUploader({
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  remove one tile                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The same `AlertDialog` guard every destructive action in the app sits behind
+ * (see `features/schedule/subjects-manager.tsx`), but only once the photo is
+ * really stored — confirming the removal of a preview that never uploaded
+ * would just be noise.
+ */
+function RemovePhotoButton({
+  uploaded,
+  busy,
+  onRemove,
+}: {
+  uploaded: boolean;
+  busy: boolean;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  const trigger = (
+    <button
+      type="button"
+      aria-label={ka.attachments.removePhoto}
+      disabled={busy}
+      onClick={() => (uploaded ? setOpen(true) : onRemove())}
+      className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-full bg-background/90 text-foreground shadow-sm disabled:opacity-50"
+    >
+      <X className="size-4" />
+    </button>
+  );
+
+  if (!uploaded) return trigger;
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      {trigger}
+
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {ka.attachments.deleteConfirmTitle}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {ka.attachments.deleteConfirmBody}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel>{ka.common.cancel}</AlertDialogCancel>
+          <AlertDialogAction disabled={busy} onClick={onRemove}>
+            {ka.common.delete}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

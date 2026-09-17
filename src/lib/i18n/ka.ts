@@ -120,6 +120,8 @@ export const ka = {
     zoomReset: "საწყისი ზომა",
     zoomHint: "გასადიდებლად ორი თითი ან ორმაგი შეხება",
     photoIndex: "{index} / {total}",
+    deleteConfirmTitle: "წავშალოთ ფოტო?",
+    deleteConfirmBody: "ფოტო სამუდამოდ წაიშლება. საჭიროების შემთხვევაში თავიდან გადაიღე.",
 
     errTooLarge: "ფაილი ძალიან დიდია",
     errBadType: "ასეთი ტიპის ფაილი არ იტვირთება",
@@ -184,6 +186,8 @@ export const ka = {
     passwordUpdated: "პაროლი განახლდა",
     passwordSameAsOld: "ახალი პაროლი ძველის იდენტურია",
     resetLinkInvalid: "ბმული არასწორია ან ვადაგასულია. მოითხოვეთ ახალი.",
+    resetNotForChild:
+      "მოსწავლის ანგარიშს პაროლი არ აქვს — შესვლა PIN-ით ხდება. თუ PIN დაგავიწყდა, მშობელს სთხოვე ახალი მოწვევის კოდი.",
 
     // child — invite code
     joinTitle: "მოწვევის კოდი",
@@ -342,6 +346,15 @@ export const ka = {
     sessionExpired: "სესიას ვადა გაუვიდა. გთხოვთ, თავიდან შეხვიდეთ.",
     tooManyRequests: "ძალიან ბევრი მცდელობა. სცადეთ ცოტა ხანში.",
     unauthorized: "წვდომა აკრძალულია",
+
+    // error / not-found boundaries
+    pageTitle: "გვერდი ვერ ჩაიტვირთა",
+    pageBody: "დროებითი შეფერხებაა. სცადეთ თავიდან.",
+    backToDashboard: "დაფაზე დაბრუნება",
+    reference: "კოდი: {code}",
+    notFoundTitle: "გვერდი ვერ მოიძებნა",
+    notFoundBody: "შესაძლოა ბმული მოძველდა ან გვერდი აღარ არსებობს.",
+    goHome: "მთავარ გვერდზე",
   },
 
   // --------------------------------------------------------------- inbox ---
@@ -411,6 +424,12 @@ export const ka = {
     openChat: "ჩატის გახსნა",
     taskFromParent: "დავალების ფოტო",
     yourWork: "შენი ამოხსნა",
+
+    // error boundary
+    errorTitle: "უი, რაღაც აირია",
+    errorBody: "არაუშავს — სცადე თავიდან.",
+    errorRetry: "ისევ ცადე",
+    errorHome: "დღევანდელ გვერდზე დაბრუნება",
   },
 
   // ------------------------------------------------------------- lessons ---
