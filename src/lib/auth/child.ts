@@ -452,6 +452,15 @@ export async function describeChildrenForDevice(
   if (!parsed.success) return fail(ka.errors.generic);
   if (parsed.data.length === 0) return ok([]);
 
+  // Unauthenticated and backed by the service role, so it gets the same kind of
+  // throttle as the other two: without one it is a free oracle for "is this
+  // uuid a child, and what are they called". Guessing a v4 uuid is hopeless,
+  // but the endpoint should still not be hammerable. A shared family tablet
+  // calls this once per `/kid-login` visit.
+  if (!(await throttle("device-children", 60, 10 * 60_000))) {
+    return fail(ka.errors.tooManyRequests);
+  }
+
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("children")

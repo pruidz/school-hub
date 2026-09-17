@@ -58,7 +58,9 @@ function revalidateAssignment(assignmentId: string, childId?: string): void {
   revalidatePath(`/kid/assignments/${assignmentId}`);
   revalidatePath("/kid/today");
   revalidatePath("/kid/chat");
-  if (childId) revalidatePath(`/parent/children/${childId}`);
+  // There is no `/parent/children/[childId]` route — the child detail is a
+  // panel on `/parent/children`, so that is the page to invalidate.
+  if (childId) revalidatePath("/parent/children");
 }
 
 /**

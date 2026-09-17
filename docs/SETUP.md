@@ -84,8 +84,9 @@ npm run dev
 
 1. პროექტი აიტვირთოს GitHub-ზე (პრივატ რეპოზიტორიაში).
 2. https://vercel.com → **Import Git Repository** → აირჩიე რეპო.
-3. **Environment Variables** — ჩასვი იგივე ოთხი ცვლადი, ოღონდ
-   `NEXT_PUBLIC_SITE_URL` შეცვალე Vercel-ის მისამართით.
+3. **Environment Variables** — ჩასვი `.env.local`-ის ხუთივე ცვლადი (მათ შორის
+   `CHILD_AUTH_SECRET` — მის გარეშე ბავშვის ლოგინი საერთოდ არ იმუშავებს),
+   ოღონდ `NEXT_PUBLIC_SITE_URL` შეცვალე Vercel-ის მისამართით.
 4. Supabase → **Authentication → URL Configuration** → **Site URL** და
    **Redirect URLs** დაამატე Vercel-ის მისამართი.
 5. Deploy.

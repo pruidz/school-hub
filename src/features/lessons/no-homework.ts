@@ -4,21 +4,9 @@ import type { LessonUpdate } from "@/lib/db.types";
  * "დავალება არ მოგვცეს" — the child confirming that a lesson produced no
  * homework.
  *
- * ============================== MISSING COLUMN ==============================
- * This needs a boolean on `lessons` and the column DOES NOT EXIST yet. A3 may
- * not add migrations, so the UI is written against the column as if it were
- * there and everything that touches it funnels through this module.
- *
- * The migration A1 has to add (`supabase/migrations/0006_lesson_no_homework.sql`):
- *
- *   alter table public.lessons
- *     add column if not exists no_homework boolean not null default false;
- *
- *   comment on column public.lessons.no_homework is
- *     'Child confirmed that this lesson produced no homework (screen C2).';
- *
- * …and then `src/lib/db.types.ts` regenerated so `no_homework` appears in the
- * lessons Row/Insert/Update types and the casts below can be deleted.
+ * The column lives in `supabase/migrations/0006_lesson_no_homework.sql` and is
+ * present in `src/lib/db.types.ts`. Everything that touches it still funnels
+ * through this module so the "column not applied yet" path stays in one place.
  *
  * Why not encode it in an existing column: `lessons.notes` is free text the
  * parent reads, and `lessons.topic` is the lesson content — smuggling a flag
@@ -27,11 +15,10 @@ import type { LessonUpdate } from "@/lib/db.types";
  * "nobody has entered the homework yet" and "there is no homework" have to be
  * distinguishable, which is the whole point of the button.
  *
- * Until the migration lands, reads return `false` (the column is simply absent
- * from the row) and writes fail with Postgres 42703, which
- * `isMissingColumnError` turns into a readable Georgian message instead of a
- * crash.
- * ============================================================================
+ * Against a database where 0006 has not been applied, reads return `false` (the
+ * column is simply absent from the row) and writes fail with Postgres 42703,
+ * which `isMissingColumnError` turns into a readable Georgian message instead
+ * of a crash.
  */
 
 /** Postgres `undefined_column`. */
@@ -44,20 +31,15 @@ export function isMissingColumnError(
 }
 
 /**
- * Read the flag off a row selected with `select("*")`. The column is absent
- * today and present after the migration; both shapes are handled here so no
- * caller has to care.
+ * Read the flag off a row selected with `select("*")`. Tolerates a row from a
+ * database where 0006 has not been applied, where the key is simply absent.
  */
 export function readNoHomework(row: object): boolean {
   if (!("no_homework" in row)) return false;
   return (row as { no_homework: unknown }).no_homework === true;
 }
 
-/**
- * The update payload. The cast is the single place where we outrun the
- * generated types; delete it together with the comment above once
- * `db.types.ts` knows about the column.
- */
+/** The update payload. */
 export function noHomeworkPatch(value: boolean): LessonUpdate {
-  return { no_homework: value } as unknown as LessonUpdate;
+  return { no_homework: value };
 }

@@ -107,8 +107,13 @@ export function PhotoUploader({
     );
   }, []);
 
+  // A finished upload is already an `attachments` row, so the parent screen
+  // counts it in `existingCount` after `router.refresh()`. Counting it here too
+  // would halve the real limit (6 photos would stop accepting files after 3).
   const liveCount =
-    existingCount + items.filter((item) => item.phase !== "error").length;
+    existingCount +
+    items.filter((item) => item.phase !== "error" && item.phase !== "done")
+      .length;
   const remaining = Math.max(0, max - liveCount);
   const atLimit = remaining <= 0;
 

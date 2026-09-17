@@ -79,10 +79,9 @@ async function actorForChild(
  * on every page load is harmless. It never runs for a future date — the child
  * records what happened, and nothing has happened tomorrow yet.
  *
- * Caveat worth knowing: there is no unique index on
- * `lessons (child_id, slot_id, date)`, so two simultaneous first loads could
- * each insert the same row. The read path collapses duplicates by `slot_id`;
- * the real fix is a unique index and is flagged for A1.
+ * `uq_lessons_child_slot_date` (migration 0006) makes that safe under
+ * concurrency: two simultaneous first loads cannot both insert the same row,
+ * and the loser treats the unique violation as "already done".
  */
 export async function materialiseDayLessons(
   input: unknown,
@@ -128,8 +127,14 @@ export async function materialiseDayLessons(
   );
 
   if (error) {
-    console.error("materialiseDayLessons failed", error.code);
-    return fail(ka.errors.generic);
+    // 23505 = uq_lessons_child_slot_date (0006). Two tabs, or a retried
+    // request, raced us to the same day; the rows exist, which is the point.
+    if (error.code !== "23505") {
+      console.error("materialiseDayLessons failed", error.code);
+      return fail(ka.errors.generic);
+    }
+    revalidateDay();
+    return ok({ created: 0 });
   }
 
   revalidateDay();
@@ -184,10 +189,10 @@ export async function updateLesson(
 /**
  * "დავალება არ მოგვცეს".
  *
- * Writes `lessons.no_homework`, which does not exist in the database yet — see
- * `./no-homework.ts` for the migration this needs. Until it is applied the
- * write fails with 42703 and the child gets a plain Georgian explanation
- * instead of a stack trace.
+ * Writes `lessons.no_homework` (migration 0006). If a deployment is ever run
+ * against a database where 0006 has not been applied, the write fails with
+ * 42703 and the child gets a plain Georgian explanation instead of a stack
+ * trace.
  */
 export async function setLessonNoHomework(
   input: unknown,

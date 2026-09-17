@@ -12,6 +12,11 @@ supabase/
     0003_functions.sql    RLS helpers + assignment status machine + audit trail
     0004_rls.sql          RLS enabled on every table + explicit policies
     0005_storage.sql      private "evidence" bucket + object policies
+    0006_lesson_no_homework.sql
+                          lessons.no_homework + uq_lessons_child_slot_date
+    0007_privilege_hardening.sql
+                          profiles.role lockdown, derived child_id on
+                          messages/attachments, wider child column lock
   seed.sql                one family, one parent, two children, a full week
 ```
 
@@ -45,9 +50,10 @@ supabase db reset          # re-applies migrations AND runs seed.sql
 
 1. Open your project → **SQL Editor** → **New query**.
 2. Paste the contents of `0001_extensions.sql`, run it.
-3. Repeat for `0002`, `0003`, `0004`, `0005` — one file at a time, in order.
-   Do not merge them into one query; later files depend on objects created by
-   earlier ones.
+3. Repeat for `0002` … `0007` — one file at a time, in order. Do not merge them
+   into one query; later files depend on objects created by earlier ones, and
+   `0007` in particular must run after `0004`, which would otherwise re-grant
+   the table-wide UPDATE on `profiles` that `0007` narrows.
 4. If `0005_storage.sql` prints a notice about `storage.objects` RLS, ignore it:
    Supabase enables it already, the statement is only a fallback for other hosts.
 
@@ -120,6 +126,7 @@ Copy `.env.local.example` to `.env.local` and fill it in from
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser + server | safe to expose; RLS protects the data |
 | `SUPABASE_SERVICE_ROLE_KEY` | server only | bypasses RLS — never import it into a Client Component |
 | `NEXT_PUBLIC_SITE_URL` | auth redirects | `http://localhost:3000` in dev |
+| `CHILD_AUTH_SECRET` | server only | not a Supabase value — generate it yourself (`openssl rand -base64 48`). Every child login derives its password from it, so a missing or rotated value locks every child out |
 
 No keys are committed to this repo, and none belong in these SQL files.
 
@@ -136,10 +143,23 @@ one table can look at another without re-entering RLS:
 and the `*_child_id(uuid)` lookups for tables that do not carry `child_id`.
 
 **Row scope** is policies; **column scope** is triggers. Postgres policies
-cannot say "this column may not change", so
-`public.assignments_status_guard()` enforces the status machine and blocks a
-child from touching `review_comment`, `reviewed_by`, `reviewed_at` and
-`redo_count`. Every status change is appended to `assignment_events`.
+cannot say "this column may not change", so `public.assignments_status_guard()`
+enforces the status machine and limits a child to `status`, `self_rating`,
+`difficulty_note` and `minutes_spent` — everything the parent authored (title,
+source_ref, due date, subject, priority) and every reviewer field
+(`review_comment`, `reviewed_by`, `reviewed_at`, `redo_count`) is immutable for
+them. Every status change is appended to `assignment_events`.
+
+`public.profiles_guard_identity()` (0007) is the same idea one table over: a
+signed-in user may not change their own `profiles.role`, because every
+parent-side policy is `public.is_parent()`, which reads exactly that column.
+`profiles` also carries a column-level grant so `authenticated` can only write
+`display_name` and `avatar_url`.
+
+`messages.child_id` and `attachments.child_id` are **derived** from the owning
+assignment/lesson/message by a BEFORE INSERT trigger, never taken from the
+client: the RLS WITH CHECK on both tables compares nothing but `child_id`, so
+trusting the submitted value would let a child post into a sibling's thread.
 
 **`anon` has no access at all.** `0004` revokes every table privilege from the
 `anon` role and creates no policy for it, so an unauthenticated PostgREST
