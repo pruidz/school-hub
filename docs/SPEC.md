@@ -1,0 +1,167 @@
+# SCHOOL-HUB — ტექნიკური სპეციფიკაცია v1.0
+_დაფიქსირებული გადაწყვეტილებები. აგენტები ამ დოკუმენტს დაეყრდნობიან._
+
+## 0. დაფიქსირებული არჩევანი
+
+| საკითხი | გადაწყვეტილება |
+|---|---|
+| განთავსება | Supabase (Postgres + Auth + Storage + Realtime) + Vercel |
+| ფრონტი | Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui, PWA |
+| ბავშვის წვდომა | ბავშვს აქვს საკუთარი ლოგინი, თვითონ ტვირთავს |
+| AI-შემოწმება | ფაზა 3 (სქემაში ადგილი წინასწარ დატოვებული) |
+| საქაღალდე | C:\Users\pru\Claude\SCHOOL-HUB |
+| ინტერფეისის ენა | ქართული (i18n სტრუქტურით, რომ მერე დაემატოს) |
+
+---
+
+## 1. ავტორიზაციის მოდელი
+
+**მშობელი:** Supabase Auth — email + პაროლი (magic link როგორც სარეზერვო).
+
+**ბავშვი:** email არ სჭირდება. მშობელი ქმნის ბავშვს და სისტემა გენერირებს:
+- **მოწვევის კოდი** (6 სიმბოლო) — ერთჯერადი, ტელეფონზე შესაყვანი;
+- შემდეგ ბავშვი ირჩევს **4-ნიშნა PIN-ს**, მოწყობილობა ინახავს სესიას (long-lived refresh token).
+- ტექნიკურად ბავშვიც Supabase-ის მომხმარებელია შიდა იდენტიფიკატორით, რომ RLS ერთნაირად იმუშაოს.
+
+**რატომ ასე:** ბავშვს პაროლის დამახსოვრება არ უწევს, მაგრამ RLS-ის დონეზე ნამდვილი, გამიჯნული მომხმარებელია — ანუ ბავშვი ტექნიკურადაც ვერ ნახავს დის/ძმის მონაცემს ან შენს რეპორტებს.
+
+**დამხმარე (ფაზა 2):** მშობელი აგზავნის მოწვევას email-ზე, ირჩევს რომელ ბავშვზე და რა უფლებით (ნახვა / ნახვა+კომენტარი).
+
+---
+
+## 2. მონაცემთა ბაზა (Postgres)
+
+```
+profiles         id (-> auth.users), role (parent|child|helper),
+                 display_name, avatar_url, created_at
+
+families         id, name, owner_id
+family_members   family_id, user_id, role, permissions jsonb
+
+children         id, family_id, profile_id, name, grade, school,
+                 birth_date, avatar_url, color, is_active
+
+subjects         id, child_id, name, color, teacher_name, sort_order
+
+schedule_slots   id, child_id, subject_id, weekday (1-7),
+                 start_time, end_time, effective_from, effective_to
+
+lessons          id, child_id, subject_id, date, topic, notes,
+                 slot_id, created_by, created_at
+                 -- „რა გავიარეთ" კონკრეტულ დღეს
+
+topics           id, subject_id, name, parent_topic_id
+
+assignments      id, lesson_id, child_id, subject_id, topic_id,
+                 title, description,
+                 source_ref              -- „წიგნი გვ.45, სავარჯიშო 3"
+                 due_date, due_time,
+                 status (assigned|in_progress|submitted|approved|redo),
+                 priority,
+                 self_rating (1-5),      -- „რამდენად გავიგე"
+                 difficulty_note,        -- „რა გამიჭირდა"
+                 minutes_spent,
+                 redo_count,             -- რამდენჯერ დაბრუნდა
+                 submitted_at, reviewed_at, reviewed_by, review_comment,
+                 ai_check jsonb,         -- ფაზა 3
+                 created_by, created_at, updated_at
+
+attachments      id, assignment_id, lesson_id, message_id,
+                 kind (task_source|solution|review|chat),
+                 storage_path, thumb_path, mime, size_bytes,
+                 width, height, sort_order, uploaded_by, created_at
+
+messages         id, assignment_id, lesson_id, author_id,
+                 body, voice_path, created_at, edited_at
+message_reads    message_id, user_id, read_at
+
+grades           id, child_id, subject_id, date, value, max_value,
+                 source (teacher|internal), note, attachment_id
+
+topic_mastery    id, child_id, topic_id, level (0-100), samples, updated_at
+
+notifications    id, user_id, type, payload jsonb, read_at, created_at
+```
+
+### ინდექსები
+`assignments(child_id, status)`, `assignments(child_id, due_date)`,
+`lessons(child_id, date)`, `messages(assignment_id, created_at)`,
+`attachments(assignment_id, kind)`.
+
+### RLS პრინციპები
+- **მშობელი:** სრული წვდომა თავისი ოჯახის ქვეშ არსებულ ყველა ჩანაწერზე.
+- **ბავშვი:** `SELECT/INSERT/UPDATE` მხოლოდ იმ სტრიქონებზე, სადაც `child_id` მისია.
+  - ვერ ცვლის: სტატუსს `approved`/`redo`-ზე, `review_comment`-ს, `grades`-ს, სხვისი შეტყობინებებს.
+  - ცვლის მხოლოდ: `submitted`-ზე გადაყვანას, `self_rating`, `difficulty_note`, `minutes_spent`, საკუთარ ფაილებს.
+- **Storage:** bucket `evidence`, გზა `{child_id}/{assignment_id}/{uuid}.webp`, policy იმავე წესით.
+- სტატუსის დაშვებული გადასვლები აღსრულდება DB trigger-ით, არა მხოლოდ UI-ში.
+
+---
+
+## 3. სტატუსების ციკლი
+
+```
+assigned ──(ბავშვი იწყებს)──> in_progress ──(ბავშვი აბარებს)──> submitted
+                                                                    │
+                                        ┌───────────────────────────┴───────────────┐
+                              (მშობელი ✓) approved                    (მშობელი ↻) redo
+                                                                                    │
+                                                                    ბრუნდება in_progress-ზე,
+                                                                    redo_count += 1
+```
+
+`redo` → `in_progress` გადასვლისას `redo_count` იზრდება და ინახება ისტორია (როდის, რა კომენტარით).
+
+---
+
+## 4. ეკრანები
+
+### მშობელი (desktop-first, მობილურზეც მუშა)
+
+| # | ეკრანი | შიგთავსი |
+|---|---|---|
+| P1 | Dashboard | ბავშვების ბარათები: დღევანდელი გაკვეთილები, შესასრულებელი/შესამოწმებელი რიცხვები, კვირის შესრულების %, გადაკეთების % |
+| P2 | შესამოწმებელი (Inbox) | ყველა `submitted` დავალება ყველა ბავშვზე, უახლესი ზემოთ |
+| P3 | შემოწმების ეკრანი | Split: მარცხნივ წიგნის სქრინი (zoom), მარჯვნივ ამოხსნის სქრინები. ქვემოთ: თვითშეფასება, დრო, „რა გამიჭირდა". ღილაკები ✓ / ↻ + კომენტარი. გვერდით ჩატი |
+| P4 | ბავშვის გვერდი | ტაბები: დღეს / ცხრილი / დავალებები (ფილტრით) / ისტორია / რეპორტი / ნიშნები |
+| P5 | ცხრილის რედაქტორი | კვირეული grid, drag-to-create, საგნის ფერი |
+| P6 | საგნები და თემები | საგნის დამატება, თემების სია |
+| P7 | რეპორტი | გრაფიკები: შესრულება კვირეებში, redo rate საგნის მიხედვით, დრო, სუსტი თემები TOP-5 |
+| P8 | პარამეტრები | ბავშვების მართვა, მოწვევის კოდები, შეტყობინებები |
+
+### ბავშვი (mobile-first PWA)
+
+| # | ეკრანი | შიგთავსი |
+|---|---|---|
+| C1 | დღეს | დღევანდელი გაკვეთილები + შესასრულებელი დავალებები, დიდი ღილაკებით |
+| C2 | გაკვეთილის ჩაწერა | „რა გავიარეთ" + კამერა → წიგნის სქრინი + „დავალება არ მოგვცეს" |
+| C3 | დავალება | წიგნის სქრინი, კამერა → ამოხსნა, თვითშეფასება 1–5, „რა გამიჭირდა", „ჩაბარება" |
+| C4 | ჩატი | კონკრეტულ დავალებაზე: ტექსტი, სურათი, ხმოვანი |
+| C5 | ჩემი პროგრესი | streak, კვირის შესრულება, badge-ები |
+
+---
+
+## 5. ფაზა 1 — აგენტების დავალებები
+
+### A1 — ბაზა და უსაფრთხოება
+Supabase სქემა, მიგრაციები (`supabase/migrations/`), RLS პოლისები ყველა ცხრილზე, storage bucket + policy, სტატუსის trigger, seed script სატესტო ოჯახით (2 ბავშვი, 6 საგანი, 1 კვირის ცხრილი, 10 დავალება სხვადასხვა სტატუსით), TypeScript ტიპების გენერაცია.
+
+### A2 — კარკასი და ავტორიზაცია
+Next.js პროექტი, Tailwind + shadcn/ui, ქართული ფონტი, light/dark, მშობლის auth, ბავშვის მოწვევა-კოდი + PIN flow, role-based routing (`/parent/*`, `/kid/*`), ლეიაუტები და ნავიგაცია, PWA manifest + service worker.
+
+### A3 — ცხრილი და გაკვეთილები
+საგნების CRUD, კვირეული ცხრილის რედაქტორი, ცხრილიდან დღის გაკვეთილების ავტო-გენერაცია, ბავშვის „დღეს" ეკრანი, გაკვეთილის ჩაწერის ფორმა.
+
+### A4 — დავალებები და მტკიცებულებები
+დავალების CRUD, სურათის ატვირთვა (client-side resize → WebP + thumbnail), gallery + zoom, სტატუსების ციკლი, ბავშვის ჩაბარების ფორმა, მშობლის შემოწმების split-ეკრანი, Inbox.
+
+### A5 — განხილვა
+RLS-ის რეალური ტესტი (ბავშვი ვერ ხედავს სხვისას), ატვირთვის ლიმიტები, სტატუსების გვერდის ავლა, ხარვეზები, მობილურზე გამოსაცდელი გავლა.
+
+**თანმიმდევრობა:** A1 → A2 (პარალელურად) → A3 + A4 პარალელურად → A5.
+
+---
+
+## 6. ფაზა 2 / 3 (მოგვიანებით)
+- **ფაზა 2:** realtime ჩატი, push/email შეტყობინებები, dashboard მეტრიკები, თემების რუკა, დამხმარე როლი.
+- **ფაზა 3:** კვირეული ავტო-რეპორტი, ნიშნები + eSchool სქრინი, AI-შემოწმება (Claude API), PDF ექსპორტი.
