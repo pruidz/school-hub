@@ -6,7 +6,7 @@ _დაფიქსირებული გადაწყვეტილებ
 | საკითხი | გადაწყვეტილება |
 |---|---|
 | განთავსება | Supabase (Postgres + Auth + Storage + Realtime) + Vercel |
-| ფრონტი | Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui, PWA |
+| ფრონტი | Next.js 16 App Router, React 19, TypeScript, Tailwind v4, shadcn/ui, PWA |
 | ბავშვის წვდომა | ბავშვს აქვს საკუთარი ლოგინი, თვითონ ტვირთავს |
 | AI-შემოწმება | ფაზა 3 (სქემაში ადგილი წინასწარ დატოვებული) |
 | საქაღალდე | C:\Users\pru\Claude\SCHOOL-HUB |
@@ -39,7 +39,12 @@ families         id, name, owner_id
 family_members   family_id, user_id, role, permissions jsonb
 
 children         id, family_id, profile_id, name, grade, school,
-                 birth_date, avatar_url, color, is_active
+                 birth_date, avatar_url, color, is_active,
+                 invite_code, invite_expires_at,        -- მოწვევა
+                 pin_hash, pin_attempts, pin_locked_until,
+                 ui_mode (simple|full),                 -- ასაკზე მორგება
+                 show_own_stats bool default false      -- ბავშვი ხედავს თუ არა თავის სტატისტიკას
+                 -- ბავშვს ამ ცხრილზე მხოლოდ SELECT აქვს; PIN/მოწვევა service role-ით
 
 subjects         id, child_id, name, color, teacher_name, sort_order
 
@@ -66,12 +71,16 @@ assignments      id, lesson_id, child_id, subject_id, topic_id,
                  ai_check jsonb,         -- ფაზა 3
                  created_by, created_at, updated_at
 
-attachments      id, assignment_id, lesson_id, message_id,
+assignment_events  id, assignment_id, actor_id, from_status, to_status,
+                   comment, created_at
+                   -- append-only აუდიტი; წერს მხოლოდ trigger
+
+attachments      id, assignment_id, lesson_id, message_id, child_id,
                  kind (task_source|solution|review|chat),
                  storage_path, thumb_path, mime, size_bytes,
                  width, height, sort_order, uploaded_by, created_at
 
-messages         id, assignment_id, lesson_id, author_id,
+messages         id, assignment_id, lesson_id, child_id, author_id,
                  body, voice_path, created_at, edited_at
 message_reads    message_id, user_id, read_at
 
@@ -93,7 +102,15 @@ notifications    id, user_id, type, payload jsonb, read_at, created_at
 - **ბავშვი:** `SELECT/INSERT/UPDATE` მხოლოდ იმ სტრიქონებზე, სადაც `child_id` მისია.
   - ვერ ცვლის: სტატუსს `approved`/`redo`-ზე, `review_comment`-ს, `grades`-ს, სხვისი შეტყობინებებს.
   - ცვლის მხოლოდ: `submitted`-ზე გადაყვანას, `self_rating`, `difficulty_note`, `minutes_spent`, საკუთარ ფაილებს.
-- **Storage:** bucket `evidence`, გზა `{child_id}/{assignment_id}/{uuid}.webp`, policy იმავე წესით.
+- **Storage:** private bucket `evidence`. გზები:
+  `{child_id}/{assignment_id}/{uuid}.webp` — დავალების სქრინები
+  `{child_id}/lesson/{lesson_id}/{uuid}.webp` — გაკვეთილის სქრინი (C2 ეკრანი, სადაც
+  დავალება ჯერ არ არსებობს). პირველი სეგმენტი ყოველთვის `child_id`-ია, ამიტომ ერთი
+  policy ორივეს ფარავს. bucket იღებს აუდიოსაც (`messages.voice_path`).
+- **grades:** ბავშვს წვდომა საერთოდ არ აქვს (არც ნახვა).
+- **topic_mastery:** ბავშვი ხედავს მხოლოდ თუ `children.show_own_stats = true`.
+- `anon` როლს ყველა ცხრილზე უფლება ჩამორთმეული აქვს — ავტორიზაციამდე საჭირო
+  ოპერაციები (მოწვევის კოდის შემოწმება, PIN) service role-ით, Server Action-იდან.
 - სტატუსის დაშვებული გადასვლები აღსრულდება DB trigger-ით, არა მხოლოდ UI-ში.
 
 ---
@@ -102,15 +119,29 @@ notifications    id, user_id, type, payload jsonb, read_at, created_at
 
 ```
 assigned ──(ბავშვი იწყებს)──> in_progress ──(ბავშვი აბარებს)──> submitted
+    │                                                               │
+    └──────────(პირდაპირ ჩაბარება)──────────────────────────────────┤
                                                                     │
                                         ┌───────────────────────────┴───────────────┐
                               (მშობელი ✓) approved                    (მშობელი ↻) redo
-                                                                                    │
+                                        │                                           │
+                                        │  (მშობლის შესწორება:                      │
+                                        │   approved → redo | in_progress)          │
+                                        └───────────────────────────────────────────┤
+                                                                                    ▼
                                                                     ბრუნდება in_progress-ზე,
                                                                     redo_count += 1
 ```
 
-`redo` → `in_progress` გადასვლისას `redo_count` იზრდება და ინახება ისტორია (როდის, რა კომენტარით).
+დაშვებული გადასვლები (აღსრულებულია `assignments_status_guard` trigger-ით):
+`assigned→in_progress`, `assigned→submitted`, `in_progress→submitted`,
+`submitted→approved`, `submitted→redo`, `redo→in_progress`,
+და მხოლოდ მშობლისთვის `approved→redo`, `approved→in_progress`.
+სხვა ნებისმიერი გადასვლა უარყოფილია ბაზის დონეზე.
+
+`redo` → `in_progress` გადასვლისას `redo_count` იზრდება. ყოველი გადასვლა იწერება
+`assignment_events`-ში (ვინ, როდის, საიდან, სად, რა კომენტარით) — ეს ცხრილი
+append-only-ია, არავის აქვს მასზე ჩაწერის პოლისი.
 
 ---
 
