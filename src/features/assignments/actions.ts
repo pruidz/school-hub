@@ -1,0 +1,589 @@
+"use server";
+
+/**
+ * Write side of the assignments feature.
+ *
+ * Every action follows the same shape:
+ *   1. `requireParent()` / `requireChild()`
+ *   2. zod-validate the input
+ *   3. read the row back through the user-scoped client and confirm the child
+ *      belongs to the caller — a client-supplied id is never trusted
+ *   4. write, then translate any database error into Georgian
+ *
+ * The DB trigger `public.assignments_status_guard()` is the real enforcer of
+ * the status machine. The `ASSIGNMENT_TRANSITIONS` pre-check below exists only
+ * so the common mistakes produce a precise message instead of a generic one.
+ */
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+
+import { requireChild, requireParent } from "@/lib/auth/session";
+import { fail, fieldErrorsFrom, ok, type ActionFailure, type ActionResult } from "@/lib/auth/result";
+import {
+  ASSIGNMENT_TRANSITIONS,
+  type AssignmentStatus,
+} from "@/lib/assignment-status";
+import { ka } from "@/lib/i18n/ka";
+import { createClient } from "@/lib/supabase/server";
+
+import {
+  childInFamily,
+  lessonBelongsToChild,
+  loadAssignment,
+  subjectBelongsToChild,
+  topicBelongsToChild,
+  type Caller,
+} from "./access";
+import { assignmentErrorMessage, logDbError } from "./errors";
+
+/* -------------------------------------------------------------------------- */
+/*  helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function text(formData: FormData, name: string): string | null {
+  const raw = formData.get(name);
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+function revalidateAssignment(assignmentId: string, childId?: string): void {
+  revalidatePath("/parent");
+  revalidatePath("/parent/inbox");
+  revalidatePath("/parent/assignments");
+  revalidatePath(`/parent/review/${assignmentId}`);
+  revalidatePath("/kid/assignments");
+  revalidatePath(`/kid/assignments/${assignmentId}`);
+  revalidatePath("/kid/today");
+  revalidatePath("/kid/chat");
+  if (childId) revalidatePath(`/parent/children/${childId}`);
+}
+
+/**
+ * RLS turns a forbidden UPDATE/DELETE into "0 rows affected" rather than an
+ * error, so every write asks for the ids back and checks that something moved.
+ * Without this an action could report success while nothing changed.
+ */
+function noRowsAffected(rows: { id: string }[] | null): boolean {
+  return !rows || rows.length === 0;
+}
+
+function transitionAllowed(
+  from: AssignmentStatus,
+  to: AssignmentStatus,
+): boolean {
+  return ASSIGNMENT_TRANSITIONS[from].includes(to);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  parent — create / edit / delete                                            */
+/* -------------------------------------------------------------------------- */
+
+const assignmentFormSchema = z.object({
+  childId: z.uuid(),
+  title: z.string().min(1, ka.validation.titleRequired).max(200),
+  description: z.string().max(4000).nullable(),
+  sourceRef: z.string().max(300).nullable(),
+  dueDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, ka.validation.dateInvalid)
+    .nullable(),
+  dueTime: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/, ka.validation.timeInvalid)
+    .nullable(),
+  subjectId: z.uuid().nullable(),
+  topicId: z.uuid().nullable(),
+  lessonId: z.uuid().nullable(),
+  priority: z.number().int().min(1).max(3),
+});
+
+type AssignmentFormInput = z.infer<typeof assignmentFormSchema>;
+
+export type AssignmentFormState = (ActionFailure & { ok: false }) | null;
+
+function readAssignmentForm(formData: FormData): unknown {
+  const priorityRaw = text(formData, "priority");
+  return {
+    childId: text(formData, "childId") ?? "",
+    title: text(formData, "title") ?? "",
+    description: text(formData, "description"),
+    sourceRef: text(formData, "sourceRef"),
+    dueDate: text(formData, "dueDate"),
+    dueTime: text(formData, "dueTime"),
+    subjectId: text(formData, "subjectId"),
+    topicId: text(formData, "topicId"),
+    lessonId: text(formData, "lessonId"),
+    priority: priorityRaw ? Number(priorityRaw) : 2,
+  };
+}
+
+/** Confirm every foreign key in the form points inside `childId`'s own data. */
+async function validateRelations(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  caller: Caller,
+  input: AssignmentFormInput,
+): Promise<string | null> {
+  if (
+    input.subjectId &&
+    !(await subjectBelongsToChild(supabase, input.subjectId, input.childId))
+  ) {
+    return ka.assignments.errForbidden;
+  }
+  if (
+    input.topicId &&
+    !(await topicBelongsToChild(supabase, input.topicId, input.childId))
+  ) {
+    return ka.assignments.errForbidden;
+  }
+  if (
+    input.lessonId &&
+    !(await lessonBelongsToChild(
+      supabase,
+      caller,
+      input.lessonId,
+      input.childId,
+    ))
+  ) {
+    return ka.assignments.errForbidden;
+  }
+  return null;
+}
+
+export async function createAssignmentAction(
+  _prev: AssignmentFormState,
+  formData: FormData,
+): Promise<AssignmentFormState> {
+  const parent = await requireParent();
+
+  const parsed = assignmentFormSchema.safeParse(readAssignmentForm(formData));
+  if (!parsed.success) {
+    return fail(
+      ka.assignments.errSaveFailed,
+      fieldErrorsFrom(z.flattenError(parsed.error).fieldErrors),
+    );
+  }
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "parent", session: parent };
+
+  if (!(await childInFamily(supabase, parent, parsed.data.childId))) {
+    return fail(ka.assignments.errForbidden);
+  }
+
+  const relationError = await validateRelations(supabase, caller, parsed.data);
+  if (relationError) return fail(relationError);
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .insert({
+      child_id: parsed.data.childId,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      source_ref: parsed.data.sourceRef,
+      due_date: parsed.data.dueDate,
+      due_time: parsed.data.dueTime,
+      subject_id: parsed.data.subjectId,
+      topic_id: parsed.data.topicId,
+      lesson_id: parsed.data.lessonId,
+      priority: parsed.data.priority,
+      created_by: parent.id,
+    })
+    .select("id, child_id")
+    .single();
+
+  if (error || !data) {
+    logDbError("assignments.create", error);
+    return fail(assignmentErrorMessage(error));
+  }
+
+  revalidateAssignment(data.id, data.child_id);
+  redirect(`/parent/assignments/${data.id}`);
+}
+
+export async function updateAssignmentAction(
+  _prev: AssignmentFormState,
+  formData: FormData,
+): Promise<AssignmentFormState> {
+  const parent = await requireParent();
+
+  const assignmentId = text(formData, "assignmentId");
+  if (!assignmentId || !z.uuid().safeParse(assignmentId).success) {
+    return fail(ka.assignments.errNotFound);
+  }
+
+  const parsed = assignmentFormSchema.safeParse(readAssignmentForm(formData));
+  if (!parsed.success) {
+    return fail(
+      ka.assignments.errSaveFailed,
+      fieldErrorsFrom(z.flattenError(parsed.error).fieldErrors),
+    );
+  }
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "parent", session: parent };
+
+  const existing = await loadAssignment(supabase, caller, assignmentId);
+  if (!existing) return fail(ka.assignments.errNotFound);
+
+  // The child an assignment belongs to is immutable (the DB trigger says so
+  // too); silently keep the stored value rather than trusting the form.
+  const childId = existing.childId;
+  const relationError = await validateRelations(supabase, caller, {
+    ...parsed.data,
+    childId,
+  });
+  if (relationError) return fail(relationError);
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .update({
+      title: parsed.data.title,
+      description: parsed.data.description,
+      source_ref: parsed.data.sourceRef,
+      due_date: parsed.data.dueDate,
+      due_time: parsed.data.dueTime,
+      subject_id: parsed.data.subjectId,
+      topic_id: parsed.data.topicId,
+      lesson_id: parsed.data.lessonId,
+      priority: parsed.data.priority,
+    })
+    .eq("id", assignmentId)
+    .select("id");
+
+  if (error) {
+    logDbError("assignments.update", error);
+    return fail(assignmentErrorMessage(error));
+  }
+  if (noRowsAffected(data)) return fail(ka.assignments.errForbidden);
+
+  revalidateAssignment(assignmentId, childId);
+  redirect(`/parent/assignments/${assignmentId}`);
+}
+
+const idSchema = z.object({ assignmentId: z.uuid() });
+
+export async function deleteAssignmentAction(
+  input: z.input<typeof idSchema>,
+): Promise<ActionResult<null>> {
+  const parent = await requireParent();
+
+  const parsed = idSchema.safeParse(input);
+  if (!parsed.success) return fail(ka.assignments.errNotFound);
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "parent", session: parent };
+
+  const existing = await loadAssignment(
+    supabase,
+    caller,
+    parsed.data.assignmentId,
+  );
+  if (!existing) return fail(ka.assignments.errNotFound);
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .delete()
+    .eq("id", existing.id)
+    .select("id");
+
+  if (error) {
+    logDbError("assignments.delete", error);
+    return fail(ka.assignments.errDeleteFailed);
+  }
+  if (noRowsAffected(data)) return fail(ka.assignments.errForbidden);
+
+  revalidateAssignment(existing.id, existing.childId);
+  return ok(null);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  child — start / submit                                                     */
+/* -------------------------------------------------------------------------- */
+
+export async function startAssignmentAction(
+  input: z.input<typeof idSchema>,
+): Promise<ActionResult<null>> {
+  const child = await requireChild();
+
+  const parsed = idSchema.safeParse(input);
+  if (!parsed.success) return fail(ka.assignments.errNotFound);
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "child", session: child };
+
+  const existing = await loadAssignment(
+    supabase,
+    caller,
+    parsed.data.assignmentId,
+  );
+  if (!existing) return fail(ka.assignments.errNotFound);
+
+  if (!transitionAllowed(existing.status, "in_progress")) {
+    return fail(ka.assignments.errIllegalTransition);
+  }
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .update({ status: "in_progress" })
+    .eq("id", existing.id)
+    .select("id");
+
+  if (error) {
+    logDbError("assignments.start", error);
+    return fail(assignmentErrorMessage(error));
+  }
+  if (noRowsAffected(data)) return fail(ka.assignments.errForbidden);
+
+  revalidateAssignment(existing.id);
+  return ok(null);
+}
+
+const submitSchema = z.object({
+  assignmentId: z.uuid(),
+  selfRating: z.number().int().min(1, ka.validation.ratingRange).max(5, ka.validation.ratingRange).nullable(),
+  difficultyNote: z.string().max(2000).nullable(),
+  minutesSpent: z
+    .number()
+    .int()
+    .min(0, ka.validation.minutesRange)
+    .max(1440, ka.validation.minutesRange)
+    .nullable(),
+});
+
+export async function submitAssignmentAction(
+  input: z.input<typeof submitSchema>,
+): Promise<ActionResult<null>> {
+  const child = await requireChild();
+
+  const parsed = submitSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail(
+      ka.assignments.errSaveFailed,
+      fieldErrorsFrom(z.flattenError(parsed.error).fieldErrors),
+    );
+  }
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "child", session: child };
+
+  const existing = await loadAssignment(
+    supabase,
+    caller,
+    parsed.data.assignmentId,
+  );
+  if (!existing) return fail(ka.assignments.errNotFound);
+
+  if (existing.status === "submitted" || existing.status === "approved") {
+    return fail(ka.assignments.errIllegalTransition);
+  }
+
+  // Submitting with nothing to look at wastes the parent's time.
+  const { count } = await supabase
+    .from("attachments")
+    .select("id", { count: "exact", head: true })
+    .eq("assignment_id", existing.id)
+    .eq("kind", "solution");
+
+  if ((count ?? 0) === 0) {
+    return fail(ka.assignments.errNoSolutionPhotos);
+  }
+
+  // `redo` cannot go straight to `submitted`; the machine routes it through
+  // `in_progress`, which is also what bumps `redo_count`.
+  if (existing.status === "redo") {
+    const { error: reopenError } = await supabase
+      .from("assignments")
+      .update({ status: "in_progress" })
+      .eq("id", existing.id);
+
+    if (reopenError) {
+      logDbError("assignments.submit.reopen", reopenError);
+      return fail(assignmentErrorMessage(reopenError));
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .update({
+      status: "submitted",
+      self_rating: parsed.data.selfRating,
+      difficulty_note: parsed.data.difficultyNote,
+      minutes_spent: parsed.data.minutesSpent,
+    })
+    .eq("id", existing.id)
+    .select("id");
+
+  if (error) {
+    logDbError("assignments.submit", error);
+    return fail(assignmentErrorMessage(error));
+  }
+  if (noRowsAffected(data)) return fail(ka.assignments.errForbidden);
+
+  revalidateAssignment(existing.id);
+  return ok(null);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  parent — review                                                            */
+/* -------------------------------------------------------------------------- */
+
+const reviewSchema = z.object({
+  assignmentId: z.uuid(),
+  comment: z.string().max(2000).nullable().optional(),
+});
+
+export async function approveAssignmentAction(
+  input: z.input<typeof reviewSchema>,
+): Promise<ActionResult<null>> {
+  const parent = await requireParent();
+
+  const parsed = reviewSchema.safeParse(input);
+  if (!parsed.success) return fail(ka.assignments.errNotFound);
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "parent", session: parent };
+
+  const existing = await loadAssignment(
+    supabase,
+    caller,
+    parsed.data.assignmentId,
+  );
+  if (!existing) return fail(ka.assignments.errNotFound);
+
+  if (!transitionAllowed(existing.status, "approved")) {
+    return fail(ka.review.notSubmitted);
+  }
+
+  const comment = parsed.data.comment?.trim() || null;
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .update(
+      comment
+        ? { status: "approved", review_comment: comment }
+        : { status: "approved" },
+    )
+    .eq("id", existing.id)
+    .select("id");
+
+  if (error) {
+    logDbError("assignments.approve", error);
+    return fail(assignmentErrorMessage(error));
+  }
+  if (noRowsAffected(data)) return fail(ka.assignments.errReviewerOnly);
+
+  revalidateAssignment(existing.id, existing.childId);
+  return ok(null);
+}
+
+const redoSchema = z.object({
+  assignmentId: z.uuid(),
+  comment: z
+    .string()
+    .trim()
+    .min(3, ka.validation.commentRequired)
+    .max(2000, ka.validation.tooLong),
+});
+
+export async function requestRedoAction(
+  input: z.input<typeof redoSchema>,
+): Promise<ActionResult<null>> {
+  const parent = await requireParent();
+
+  const parsed = redoSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail(
+      ka.validation.commentRequired,
+      fieldErrorsFrom(z.flattenError(parsed.error).fieldErrors),
+    );
+  }
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "parent", session: parent };
+
+  const existing = await loadAssignment(
+    supabase,
+    caller,
+    parsed.data.assignmentId,
+  );
+  if (!existing) return fail(ka.assignments.errNotFound);
+
+  if (!transitionAllowed(existing.status, "redo")) {
+    return fail(ka.review.notSubmitted);
+  }
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .update({ status: "redo", review_comment: parsed.data.comment })
+    .eq("id", existing.id)
+    .select("id");
+
+  if (error) {
+    logDbError("assignments.redo", error);
+    return fail(assignmentErrorMessage(error));
+  }
+  if (noRowsAffected(data)) return fail(ka.assignments.errReviewerOnly);
+
+  revalidateAssignment(existing.id, existing.childId);
+  return ok(null);
+}
+
+const reopenSchema = z.object({
+  assignmentId: z.uuid(),
+  to: z.enum(["redo", "in_progress"]),
+  comment: z.string().max(2000).nullable().optional(),
+});
+
+/**
+ * Correction out of `approved` — the two reviewer-only transitions in the
+ * status machine. A redo still needs a comment; the child has to know why.
+ */
+export async function reopenAssignmentAction(
+  input: z.input<typeof reopenSchema>,
+): Promise<ActionResult<null>> {
+  const parent = await requireParent();
+
+  const parsed = reopenSchema.safeParse(input);
+  if (!parsed.success) return fail(ka.assignments.errNotFound);
+
+  const comment = parsed.data.comment?.trim() || null;
+  if (parsed.data.to === "redo" && (!comment || comment.length < 3)) {
+    return fail(ka.validation.commentRequired);
+  }
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "parent", session: parent };
+
+  const existing = await loadAssignment(
+    supabase,
+    caller,
+    parsed.data.assignmentId,
+  );
+  if (!existing) return fail(ka.assignments.errNotFound);
+
+  if (!transitionAllowed(existing.status, parsed.data.to)) {
+    return fail(ka.assignments.errIllegalTransition);
+  }
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .update(
+      comment
+        ? { status: parsed.data.to, review_comment: comment }
+        : { status: parsed.data.to },
+    )
+    .eq("id", existing.id)
+    .select("id");
+
+  if (error) {
+    logDbError("assignments.reopen", error);
+    return fail(assignmentErrorMessage(error));
+  }
+  if (noRowsAffected(data)) return fail(ka.assignments.errReopenReviewerOnly);
+
+  revalidateAssignment(existing.id, existing.childId);
+  return ok(null);
+}

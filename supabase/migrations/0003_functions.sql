@@ -472,7 +472,13 @@ begin
   end if;
 
   -- ------------------------------------------------------------------ audit
+  -- On a review decision always record the comment that was in force, even when it
+  -- repeats the previous one. Returning the same work twice with the same wording is
+  -- exactly the case the audit trail exists to show; de-duplicating it would hide
+  -- the second rejection.
   v_comment := case
+                 when new.status in ('approved', 'redo')
+                   then new.review_comment
                  when new.review_comment is distinct from old.review_comment
                    then new.review_comment
                  else null

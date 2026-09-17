@@ -75,6 +75,38 @@ Need something outside your area? Say so in your report instead of editing it.
 - Mobile-first for everything under `/kid`; desktop-first for `/parent`.
 - Run `npx tsc --noEmit` and `npm run lint` before reporting done.
 
+## Cross-agent contracts (A4 provides, A3 consumes)
+A4 owns photo upload and assignment rendering; A3 imports them instead of duplicating.
+These signatures are fixed — implement/consume them exactly.
+
+```ts
+// src/features/attachments/index.ts  — owned by A4
+"use client" component:
+PhotoUploader(props: {
+  target:
+    | { kind: "assignment"; assignmentId: string; childId: string;
+        attachmentKind: "task_source" | "solution" | "review" }
+    | { kind: "lesson"; lessonId: string; childId: string }
+  max?: number          // default 6
+  label?: string        // Georgian, from ka.ts
+  onUploaded?: () => void
+}): ReactNode
+
+PhotoGallery(props: { attachments: Attachment[]; zoom?: boolean }): ReactNode
+// server helper
+getSignedUrls(paths: string[]): Promise<Record<string, string>>
+```
+
+```ts
+// src/features/assignments/index.ts — owned by A4
+KidDayAssignments(props: { childId: string; date: string }): Promise<ReactNode>   // RSC
+ParentDayAssignments(props: { childId: string; date: string }): Promise<ReactNode> // RSC
+AssignmentStatusBadge(props: { status: AssignmentStatus }): ReactNode
+```
+
+Until A4 lands, a missing-module error on these two paths is expected for A3; report it
+rather than stubbing the files.
+
 ## Gotchas
 - `next dev` appends a `nextjs-agent-rules` block to this file. Revert that before
   you finish — do not commit it.
