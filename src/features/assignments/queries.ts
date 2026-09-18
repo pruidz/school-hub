@@ -19,6 +19,7 @@ import type {
   ChildUiMode,
 } from "@/lib/db.types";
 import { createClient, type ServerClient } from "@/lib/supabase/server";
+import { addDaysIso, isoWeekday } from "@/features/schedule/dates";
 
 import { todayString, weekBounds } from "./dates";
 
@@ -35,6 +36,11 @@ export type ChildLite = {
   color: string;
   grade: number | null;
   uiMode: ChildUiMode;
+  /**
+   * The child's own `auth.users` id. `assignments.created_by` is a profile id,
+   * so this is what tells a parent apart from the child on the same row.
+   */
+  profileId: string | null;
 };
 
 const OPEN_STATUSES: AssignmentStatus[] = ["assigned", "in_progress", "redo"];
@@ -50,7 +56,7 @@ export async function listFamilyChildren(
   if (!familyId) return [];
   const { data } = await supabase
     .from("children")
-    .select("id, name, color, grade, ui_mode, is_active")
+    .select("id, name, color, grade, ui_mode, is_active, profile_id")
     .eq("family_id", familyId)
     .eq("is_active", true)
     .order("name", { ascending: true });
@@ -61,6 +67,7 @@ export async function listFamilyChildren(
     color: row.color,
     grade: row.grade,
     uiMode: row.ui_mode,
+    profileId: row.profile_id,
   }));
 }
 
@@ -81,6 +88,40 @@ export async function listSubjects(
     color: row.color,
     childId: row.child_id,
   }));
+}
+
+/**
+ * The day homework given on `from` is most likely due: the child's next day
+ * with lessons on it.
+ *
+ * Used as the pre-filled „ვადა" of the kid quick-add, so that the common case
+ * costs no taps at all. Falls back to the next Monday-to-Friday day for a child
+ * whose timetable has not been entered yet — an empty date field would be
+ * worse, because `due_date` is what every "what do I have to do" list sorts and
+ * groups by.
+ */
+export async function nextSchoolDay(
+  childId: string,
+  from: string,
+): Promise<string> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("schedule_slots")
+    .select("weekday")
+    .eq("child_id", childId)
+    .or(`effective_to.is.null,effective_to.gte.${from}`);
+
+  const weekdays = new Set((data ?? []).map((row) => row.weekday));
+
+  for (let step = 1; step <= 7; step += 1) {
+    const candidate = addDaysIso(from, step);
+    const weekday = isoWeekday(candidate);
+    const teaches = weekdays.size === 0 ? weekday <= 5 : weekdays.has(weekday);
+    if (teaches) return candidate;
+  }
+
+  return addDaysIso(from, 1);
 }
 
 export function indexById<T extends { id: string }>(
@@ -210,6 +251,7 @@ export type ReviewBundle = {
   previousComments: ReviewComment[];
   queueNextId: string | null;
   queueRemaining: number;
+  author: AssignmentAuthor;
 };
 
 export async function getReviewBundle(
@@ -312,6 +354,7 @@ export async function getReviewBundle(
       })),
     queueNextId,
     queueRemaining: queueIds.filter((id) => id !== assignment.id).length,
+    author: assignmentAuthor(assignment, child),
   };
 }
 
@@ -319,10 +362,30 @@ export async function getReviewBundle(
 /*  parent — assignment list / editor                                          */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Who typed this row in. `created_by` already records it; this collapses it to
+ * the only distinction the parent cares about at a glance — did the child enter
+ * this themselves at school, or did I?
+ *
+ * `null` for a row with no `created_by` (seed data, or a creator whose profile
+ * was deleted): better to show nothing than to guess.
+ */
+export type AssignmentAuthor = "child" | "parent" | null;
+
+export function assignmentAuthor(
+  assignment: Pick<Assignment, "created_by">,
+  child: ChildLite | null,
+): AssignmentAuthor {
+  if (!assignment.created_by) return null;
+  if (!child?.profileId) return "parent";
+  return assignment.created_by === child.profileId ? "child" : "parent";
+}
+
 export type ParentAssignmentItem = {
   assignment: Assignment;
   child: ChildLite | null;
   subject: SubjectLite | null;
+  author: AssignmentAuthor;
 };
 
 export type ParentAssignmentList = {
@@ -379,13 +442,17 @@ export async function getParentAssignments(filters: {
   const subjectById = indexById(subjects);
 
   return {
-    items: (data ?? []).map((assignment) => ({
-      assignment,
-      child: childById.get(assignment.child_id) ?? null,
-      subject: assignment.subject_id
-        ? (subjectById.get(assignment.subject_id) ?? null)
-        : null,
-    })),
+    items: (data ?? []).map((assignment) => {
+      const child = childById.get(assignment.child_id) ?? null;
+      return {
+        assignment,
+        child,
+        subject: assignment.subject_id
+          ? (subjectById.get(assignment.subject_id) ?? null)
+          : null,
+        author: assignmentAuthor(assignment, child),
+      };
+    }),
     children,
     subjects,
   };
@@ -591,7 +658,15 @@ export async function getKidAssignmentDetail(
 
 export type ChildDashboard = {
   child: ChildLite;
+  /** Lessons the child has actually written up today. */
   todayLessons: number;
+  /**
+   * Lessons the timetable says they have today. The two differ whenever the
+   * child has not opened the app: lessons rows are materialised on their
+   * screen, so counting only those reports 0 all morning and makes a full
+   * school day look like an empty one.
+   */
+  todayScheduled: number;
   dueToday: number;
   awaitingReview: number;
   weekTotal: number;
@@ -615,7 +690,7 @@ export async function getDashboard(): Promise<{
   const today = todayString();
   const [weekFrom, weekTo] = weekBounds();
 
-  const [lessons, assignments, redoEvents] = await Promise.all([
+  const [lessons, assignments, redoEvents, slots] = await Promise.all([
     supabase
       .from("lessons")
       .select("id, child_id")
@@ -633,6 +708,15 @@ export async function getDashboard(): Promise<{
       .select("assignment_id, created_at")
       .eq("to_status", "redo")
       .gte("created_at", `${weekFrom}T00:00:00Z`),
+    // What the timetable says today holds, honouring the effective-from/to
+    // versioning so a retired slot does not inflate the count.
+    supabase
+      .from("schedule_slots")
+      .select("id, child_id")
+      .in("child_id", childIds)
+      .eq("weekday", isoWeekday(today))
+      .lte("effective_from", today)
+      .or(`effective_to.is.null,effective_to.gte.${today}`),
   ]);
 
   const assignmentRows = assignments.data ?? [];
@@ -679,6 +763,9 @@ export async function getDashboard(): Promise<{
     return {
       child,
       todayLessons: (lessons.data ?? []).filter(
+        (row) => row.child_id === child.id,
+      ).length,
+      todayScheduled: (slots.data ?? []).filter(
         (row) => row.child_id === child.id,
       ).length,
       dueToday: mine.filter(

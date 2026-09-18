@@ -3383,3 +3383,308 @@ describe('23. a parent is told when a helper decides (0011)', () => {
     }),
   );
 });
+
+// =============================================================================
+// 24. The child records the homework they were given (SPEC 3.1, migration 0012)
+//
+// `assignments_insert_own` existed from 0004 but nothing inserted through it:
+// `createAssignmentAction` is requireParent(), so until the kid create screen
+// landed the policy was dead code. 0012 closes the gap it had — the row's own
+// identity was pinned, what the row POINTED AT was not — and this block is the
+// proof, in both directions: the child can do the thing the screen exists for,
+// and cannot reach across to a sibling while doing it.
+// =============================================================================
+describe('24. a child can add their own homework, and only their own (0012)', () => {
+  /** Everything the kid form is allowed to send, all at once. */
+  const FULL_INSERT = `
+    insert into public.assignments
+      (child_id, title, description, source_ref, due_date, subject_id, lesson_id)
+    values
+      ('${ID.childA}', 'masc. gv. 45, savarjisho 3', 'nika chaicera',
+       'wigni gv. 45', current_date + 1,
+       '${ID.aSubject}'::uuid, '${ID.aLesson}'::uuid)
+    returning id, status, redo_count, created_by,
+              reviewed_by, reviewed_at, review_comment, submitted_at`;
+
+  test(
+    'child A can insert an assignment for themselves, and it lands as assigned',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const { rows, rowCount } = await s.q(FULL_INSERT);
+
+      assert.equal(rowCount, 1, 'proves: the insert was not refused');
+      assert.equal(
+        rows[0].status,
+        'assigned',
+        'proves: the column default is what a child-created row starts on, so the ' +
+          'status machine begins at the top — the action never sends a status at all',
+      );
+      assert.deepEqual(
+        {
+          redo_count: rows[0].redo_count,
+          reviewed_by: rows[0].reviewed_by,
+          reviewed_at: rows[0].reviewed_at,
+          review_comment: rows[0].review_comment,
+          submitted_at: rows[0].submitted_at,
+        },
+        {
+          redo_count: 0,
+          reviewed_by: null,
+          reviewed_at: null,
+          review_comment: null,
+          submitted_at: null,
+        },
+        'proves: nothing about the row pretends work has already happened to it',
+      );
+    }),
+  );
+
+  test(
+    'the fields the child legitimately sets at INSERT are the ones 0007 freezes afterwards',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const { rows } = await s.q(FULL_INSERT);
+      const id = rows[0].id;
+
+      const stored = await s.rows(
+        `select title, source_ref, due_date, subject_id, lesson_id, description
+           from public.assignments where id = '${id}'`,
+      );
+      assert.equal(
+        stored[0].title,
+        'masc. gv. 45, savarjisho 3',
+        'proves: the 0007 column lock is a BEFORE UPDATE trigger and does not touch an ' +
+          'INSERT — the child really can write the title, source and due date of the ' +
+          'homework THEY were given',
+      );
+      assert.equal(stored[0].source_ref, 'wigni gv. 45');
+      assert.equal(stored[0].subject_id, ID.aSubject);
+      assert.equal(stored[0].lesson_id, ID.aLesson);
+
+      const error = await s.expectError(
+        `update public.assignments set title = 'something else' where id = '${id}'`,
+      );
+      assert.equal(
+        error.code,
+        '42501',
+        'proves (and this is the pair to the test above): create-time is the ONLY time ' +
+          'those fields belong to the child. Once the row exists 0007 freezes them, which ' +
+          'is why the screen collects them before the insert rather than offering an edit ' +
+          'after it',
+      );
+    }),
+  );
+
+  test(
+    'homework that belongs to no lesson, subject or topic is allowed',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const { rowCount } = await s.q(
+        `insert into public.assignments (child_id, title)
+         values ('${ID.childA}', 'daval. koridorshi mogvces')`,
+      );
+      assert.equal(
+        rowCount,
+        1,
+        'proves: 0012 constrains the foreign keys only when they are given — the "+" on ' +
+          '/kid/assignments, which has no lesson to infer anything from, still works',
+      );
+    }),
+  );
+
+  test(
+    'the insert is recorded in the append-only audit trail',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const { rows } = await s.q(FULL_INSERT);
+
+      const events = await s.rows(
+        `select from_status, to_status, actor_id
+           from public.assignment_events where assignment_id = '${rows[0].id}'`,
+      );
+      assert.equal(events.length, 1, 'proves: exactly one birth event, not zero and not two');
+      assert.deepEqual(
+        {
+          from: events[0].from_status,
+          to: events[0].to_status,
+          actor: events[0].actor_id,
+        },
+        { from: null, to: 'assigned', actor: ID.childAUser },
+        'proves: assignments_log_insert names the child as the author of the row, so the ' +
+          'parent-side "who entered this" label has something true behind it',
+      );
+    }),
+  );
+
+  test(
+    'child A cannot insert an assignment FOR a sibling',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const error = await s.expectError(
+        `insert into public.assignments (child_id, title)
+         values ('${ID.childB}', 'homework for my sister')`,
+      );
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: child_id = my_child_id() is checked on INSERT, so a child cannot ' +
+          'put work on a sibling list',
+      );
+    }),
+  );
+
+  // ---------------------------------------------------------------- 0012 ----
+  // The three foreign keys. Before 0012 every one of these SUCCEEDED: the row
+  // was the child's own, in the right state, merely hanging off their sibling's
+  // structure.
+  const SIBLING_KEYS = {
+    lesson_id: ID.bLesson,
+    subject_id: ID.bSubject,
+    topic_id: ID.bTopic,
+  };
+
+  for (const [column, value] of Object.entries(SIBLING_KEYS)) {
+    test(
+      `child A cannot point assignments.${column} at a sibling row (0012)`,
+      tx(async () => {
+        await s.asUser(ID.childAUser);
+        const error = await s.expectError(
+          `insert into public.assignments (child_id, title, ${column})
+           values ('${ID.childA}', 'grafted onto my sister', '${value}'::uuid)`,
+        );
+        assert.equal(
+          error.code,
+          '42501',
+          `proves: 0012 makes assignments.${column} resolve back to the same child. ` +
+            'Before it, this insert passed — the child never SAW the sibling row, but ' +
+            'their homework hung off it, and the per-subject filters and the ' +
+            'redo-rate-by-subject report then counted it against the wrong child',
+        );
+      }),
+    );
+  }
+
+  test(
+    'a sibling topic is refused even though topics carry no child_id',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const owner = await s.rows(
+        `select public.topic_child_id('${ID.bTopic}') as child_id`,
+      );
+      assert.equal(
+        owner[0].child_id,
+        ID.childB,
+        'proves: the check really does walk topics -> subjects -> child_id (the only ' +
+          'route there is; topics has no child_id column of its own), and the security ' +
+          'definer helper sees the sibling row that RLS hides from this caller — which ' +
+          'is why the policy reuses it instead of inlining a join that would evaluate ' +
+          'to null here',
+      );
+    }),
+  );
+
+  test(
+    'child A CAN use their own lesson, subject and topic together',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const { rowCount } = await s.q(
+        `insert into public.assignments
+           (child_id, title, lesson_id, subject_id, topic_id)
+         values ('${ID.childA}', 'my own everything',
+                 '${ID.aLesson}'::uuid, '${ID.aSubject}'::uuid, '${ID.aTopic}'::uuid)`,
+      );
+      assert.equal(
+        rowCount,
+        1,
+        'proves: 0012 tightened the policy without breaking it — the three rejections ' +
+          'above are about ownership, not about the columns being unusable',
+      );
+    }),
+  );
+
+  // -------------------------------------------------- the initial state -----
+  const FORGED_STATE = {
+    'already approved': ['status', `'approved'`],
+    'already submitted': ['status', `'submitted'`],
+    'carrying a review comment': ['review_comment', `'kargia, davamtkice'`],
+    'naming a reviewer': ['reviewed_by', `'${ID.parent1User}'::uuid`],
+    'stamped as reviewed': ['reviewed_at', `now()`],
+    'with redo_count already spent': ['redo_count', `3`],
+  };
+
+  for (const [what, [column, value]] of Object.entries(FORGED_STATE)) {
+    test(
+      `child A cannot insert an assignment ${what}`,
+      tx(async () => {
+        await s.asUser(ID.childAUser);
+        const error = await s.expectError(
+          `insert into public.assignments (child_id, title, ${column})
+           values ('${ID.childA}', 'born reviewed', ${value})`,
+        );
+        assert.equal(
+          error.code,
+          '42501',
+          'proves: a child-created row cannot skip the status machine or invent a ' +
+            'review at birth — the UPDATE-time guard in 0007 never sees an INSERT, so ' +
+            'the INSERT policy has to say this itself',
+        );
+      }),
+    );
+  }
+
+  // ------------------------------------------------------------- parent -----
+  test(
+    'a parent can still insert for any child in their own family',
+    tx(async () => {
+      await s.asUser(ID.parent1User);
+      for (const childId of [ID.childA, ID.childB]) {
+        const { rowCount } = await s.q(
+          `insert into public.assignments (child_id, title, created_by)
+           values ('${childId}', 'set by the parent', '${ID.parent1User}'::uuid)`,
+        );
+        assert.equal(
+          rowCount,
+          1,
+          'proves: 0012 rewrote the CHILD policy only — assignments_parent_all is ' +
+            'untouched and the parent create screen still works for every child',
+        );
+      }
+    }),
+  );
+
+  test(
+    'a parent still cannot insert for a child outside their family',
+    tx(async () => {
+      await s.asUser(ID.parent1User);
+      const error = await s.expectError(
+        `insert into public.assignments (child_id, title)
+         values ('${ID.childC}', 'not my child')`,
+      );
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: the family fence on inserts is where it was before this migration',
+      );
+    }),
+  );
+
+  test(
+    'a parent may set the fields a child may not',
+    tx(async () => {
+      await s.asUser(ID.parent1User);
+      const { rowCount } = await s.q(
+        `insert into public.assignments
+           (child_id, title, priority, due_time, topic_id, created_by)
+         values ('${ID.childA}', 'parent-set', 3, time '18:00',
+                 '${ID.aTopic}'::uuid, '${ID.parent1User}'::uuid)`,
+      );
+      assert.equal(
+        rowCount,
+        1,
+        'proves: priority, due_time and topic stay the parent choice — the child action ' +
+          'omits them entirely so they fall to the column defaults, and this row is what ' +
+          'shows the columns themselves were never the problem',
+      );
+    }),
+  );
+});

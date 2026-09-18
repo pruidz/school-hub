@@ -107,8 +107,12 @@ function ChildCard({ card }: { card: ChildDashboard }) {
         <div className="grid grid-cols-3 gap-2">
           <Stat
             label={ka.parent.todayLessons}
-            value={card.todayLessons}
-            href={`/parent/schedule?child=${child.id}`}
+            /* Recorded out of scheduled. Lesson rows only exist once the child
+               opens the app, so the bare count reads 0 through a full school
+               morning and makes a busy day look empty. */
+            value={`${card.todayLessons}/${card.todayScheduled}`}
+            href={`/parent/children/${child.id}`}
+            highlight={card.todayScheduled > card.todayLessons}
           />
           <Stat
             label={ka.parent.dueToday}

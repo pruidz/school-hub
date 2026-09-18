@@ -26,7 +26,10 @@ export {
   type DueState,
 } from "./dates";
 
+export { KidQuickAdd, type KidQuickAddProps } from "./kid-quick-add";
+
 export {
+  assignmentAuthor,
   getAssignmentEditorData,
   getDashboard,
   getDayAssignmentsForChild,
@@ -37,6 +40,8 @@ export {
   getReviewBundle,
   listFamilyChildren,
   listSubjects,
+  nextSchoolDay,
+  type AssignmentAuthor,
   type AssignmentEditorData,
   type ChildDashboard,
   type ChildLite,
@@ -55,6 +60,7 @@ export {
 export {
   approveAssignmentAction,
   createAssignmentAction,
+  createAssignmentAsChildAction,
   deleteAssignmentAction,
   reopenAssignmentAction,
   requestRedoAction,

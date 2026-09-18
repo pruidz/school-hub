@@ -64,6 +64,22 @@ export const ka = {
     deleteConfirm: "წაიშალოს „{title}“? ფოტოები და მიმოწერაც წაიშლება.",
     deleted: "დავალება წაიშალა",
 
+    // the child records what was given (C2 / C3 quick add)
+    kidAdd: "დავალება დამატება",
+    kidAddTitle: "რა დაგვავალეს?",
+    kidAddHint: "გადაიღე წიგნის გვერდი — დანარჩენი არასავალდებულოა",
+    kidTitlePlaceholder: "სათაური — თუ არ დაწერ, ავტომატურად შეივსება",
+    kidTaskPhoto: "დავალების ფოტო",
+    kidSaveWithoutPhoto: "ფოტოს გარეშე დამატება",
+    kidDone: "მზადაა",
+    kidCreated: "დავალება ჩაიწერა",
+    kidAutoTitle: "{subject} — {date}",
+    kidAutoTitleNoSubject: "დავალება — {date}",
+
+    // who entered the row (parent-side, quiet)
+    createdByChild: "ბავშვმა ჩაწერა",
+    createdByParent: "მშობელმა ჩაწერა",
+
     // work / submission
     taskPhotos: "დავალების ფოტოები",
     solutionPhotos: "ამოხსნის ფოტოები",
@@ -299,6 +315,64 @@ export const ka = {
     showOwnStatsExplain:
       "თუ ჩართულია, ბავშვი თავის გვერდზე ხედავს კვირის შესრულებას და ზედიზედ დღეებს. თუ გამორთულია, ეს განყოფილება საერთოდ არ ჩანს.",
     prefsSaved: "პარამეტრები შენახულია",
+
+    // child page (P4) — chrome
+    pageOpen: "ბავშვის გვერდი",
+    pageOpenHint: "რა ჩაიწერა დღეს, დავალებები და ბოლო 30 დღე",
+    pageBack: "ბავშვების სია",
+    pageTabToday: "დღეს",
+    pageTabAssignments: "დავალებები",
+    pageTabHistory: "ისტორია",
+    pageTabSchedule: "ცხრილი",
+    pageTabReports: "რეპორტი",
+
+    // child page — day tab
+    dayPrev: "წინა დღე",
+    dayNext: "შემდეგი დღე",
+    dayToday: "დღეს",
+    dayNoFuture: "მომავალი დღე ჯერ არ დამდგარა",
+    dayLessonsHeading: "გაკვეთილები",
+    dayAssignmentsHeading: "დღის დავალებები",
+    dayFilledCount: "შევსებულია {done}/{total}",
+    dayAllFilled: "დღის ყველა გაკვეთილი ჩაწერილია",
+    dayMissingCount: "{count} გაკვეთილი ჯერ არ ჩაწერილა",
+    dayNothingRecorded: "ამ დღეს ბავშვს არაფერი ჩაუწერია",
+    dayNothingRecordedHint:
+      "არცერთ გაკვეთილზე არ არის შევსებული „რა გავიარეთ“ და არც „დავალება არ მოგვცეს“ მონიშნულა.",
+    dayNoLessons: "ამ დღეს გაკვეთილი არ იყო",
+    dayNoLessonsHint:
+      "ცხრილში ამ დღეს გაკვეთილი არ დგას. ცხრილის შესაცვლელად გადადით ტაბზე „ცხრილი“.",
+
+    // child page — the three lesson states
+    lessonRecorded: "ჩაწერილია",
+    lessonNoHomework: "დავალება არ მოგვცეს",
+    lessonBlank: "ჯერ არაფერია ჩაწერილი",
+    lessonBlankHint: "„რა გავიარეთ“ შეუვსებელია და ფოტოც არ არის",
+    lessonNotOpened: "გაკვეთილი არ გახსნილა",
+    lessonNotOpenedHint: "ცხრილში დგას, მაგრამ ჩანაწერი საერთოდ არ დაწყებულა",
+    lessonNotes: "შენიშვნა",
+    lessonNoPhoto: "წიგნის ფოტო არ არის",
+    lessonAssignmentCount: "{count} დავალება",
+
+    // child page — assignments tab
+    tabAssignmentsSubtitle: "ამ ბავშვის ყველა დავალება",
+    tabAssignmentsEmpty: "დავალება ვერ მოიძებნა",
+    tabAssignmentsEmptyHint: "შეცვალეთ ფილტრი ან დაამატეთ ახალი დავალება",
+
+    // child page — history tab
+    historyTitle: "ბოლო 30 დღე",
+    historyHint: "სად დარჩა დღე შეუვსებელი — ერთი შეხედვით",
+    historyLessonsLabel: "გაკვეთილი",
+    historyAssignmentsLabel: "დავალება",
+    historyOpenLabel: "ღია {count}",
+    historyRatio: "{done}/{total}",
+    historyNoSchedule: "უგაკვეთილო დღე",
+    historyNothing: "არაფერი",
+    historyEmpty: "ისტორია ჯერ ცარიელია",
+    historyEmptyHint:
+      "ბოლო 30 დღეში არც გაკვეთილი ჩაწერილა და არც დავალება დამდგარა",
+    historySummary: "{days} დღე ნაწილობრივ ან სულ არ შევსებულა",
+    historySummaryClean: "ბოლო 30 დღეში გამოტოვებული დღე არ არის",
   },
 
   // -------------------------------------------------------------- common ---
@@ -572,6 +646,11 @@ export const ka = {
     generate: "დღის გაკვეთილების აწყობა ცხრილიდან",
     generated: "ცხრილიდან დაემატა {count} გაკვეთილი",
     generatedNone: "ყველა გაკვეთილი უკვე აწყობილია",
+
+    // the two opposite answers to "was homework given?" — the caption above
+    // them is what keeps „დამატება" and „არ მოგვცეს" from reading as a pair of
+    // interchangeable buttons.
+    homeworkQuestion: "დავალება მოგვცეს?",
 
     // "no homework" (needs lessons.no_homework in the DB)
     noHomework: "დავალება არ მოგვცეს",

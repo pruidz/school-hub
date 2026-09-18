@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ka, t } from "@/lib/i18n/ka";
 import { PhotoGallery, PhotoUploader } from "@/features/attachments";
+import { KidQuickAdd } from "@/features/assignments/kid-quick-add";
 
 import { setLessonNoHomework, updateLesson } from "./actions";
 import type { DayLesson } from "./queries";
@@ -28,6 +29,7 @@ export function LessonCard({
   ui,
   childId,
   topicSuggestions,
+  defaultDueDate,
   readOnly = false,
 }: {
   lesson: DayLesson;
@@ -35,11 +37,14 @@ export function LessonCard({
   childId: string;
   /** Topic names of this lesson's subject, offered as autocomplete. */
   topicSuggestions: string[];
+  /** `yyyy-MM-dd` — the next school day, pre-filled into the quick-add form. */
+  defaultDueDate: string;
   readOnly?: boolean;
 }) {
   const [topic, setTopic] = React.useState(lesson.topic ?? "");
   const [notes, setNotes] = React.useState(lesson.notes ?? "");
   const [noHomework, setNoHomework] = React.useState(lesson.noHomework);
+  const [addOpen, setAddOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
   // No prop->state sync effect here: `<DayLessons>` keys the card on the stored
@@ -81,6 +86,24 @@ export function LessonCard({
       toast.success(
         next ? ka.lessons.noHomeworkSaved : ka.lessons.noHomeworkCleared,
       );
+    });
+  }
+
+  /**
+   * Homework was just recorded for this lesson, so "we were given none" is now
+   * false by construction. Clearing it silently is right: the child answered
+   * the question a second time, with an action, and making them undo the old
+   * answer first would be a tap spent on bookkeeping.
+   */
+  function clearNoHomework() {
+    if (!noHomework) return;
+    setNoHomework(false);
+    startTransition(async () => {
+      const result = await setLessonNoHomework({
+        lessonId: lesson.id,
+        value: false,
+      });
+      if (!result.ok) setNoHomework(true);
     });
   }
 
@@ -146,28 +169,80 @@ export function LessonCard({
         ) : null}
 
         {readOnly ? null : (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size={ui.controlSize}
-              className={cn("flex-1", ui.actionClass)}
-              disabled={!dirty || pending}
-              onClick={save}
-            >
-              <Check />
-              {ka.common.save}
-            </Button>
+          <Button
+            size={ui.controlSize}
+            variant="secondary"
+            className={cn("w-full", ui.actionClass)}
+            disabled={!dirty || pending}
+            onClick={save}
+          >
+            <Check />
+            {ka.common.save}
+          </Button>
+        )}
 
-            <Button
-              size={ui.controlSize}
-              variant={noHomework ? "default" : "outline"}
-              className={cn("flex-1", ui.actionClass)}
-              disabled={pending}
-              onClick={toggleNoHomework}
-              aria-pressed={noHomework}
-            >
-              <CircleSlash />
-              {noHomework ? ka.lessons.noHomeworkOn : ka.lessons.noHomework}
-            </Button>
+        {/*
+          „დავალება დამატება" and „დავალება არ მოგვცეს" are opposite answers to
+          one question, so they are never two similar buttons side by side:
+          the question is asked in words above them, the answer that produces
+          work is a full-width primary with a camera, the answer that produces
+          nothing is a small muted text button — and once "none" is recorded
+          the pair collapses into a single confirmed state with an undo.
+        */}
+        {readOnly ? null : (
+          <div className="grid gap-2 border-t pt-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              {ka.lessons.homeworkQuestion}
+            </p>
+
+            {noHomework ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2">
+                <CircleSlash className="size-4 shrink-0 text-muted-foreground" />
+                <span className="text-sm font-medium">
+                  {ka.lessons.noHomeworkOn}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ms-auto"
+                  disabled={pending}
+                  onClick={toggleNoHomework}
+                >
+                  {ka.lessons.noHomeworkUndo}
+                </Button>
+              </div>
+            ) : (
+              <>
+                <KidQuickAdd
+                  childId={childId}
+                  lesson={{
+                    id: lesson.id,
+                    subjectId: lesson.subjectId,
+                    subjectName: lesson.subjectName,
+                  }}
+                  defaultDueDate={defaultDueDate}
+                  uiMode={ui.mode}
+                  size={ui.controlSize}
+                  className="w-full"
+                  onCreated={clearNoHomework}
+                  onOpenChange={setAddOpen}
+                />
+
+                {addOpen ? null : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-self-center text-muted-foreground"
+                    disabled={pending}
+                    onClick={toggleNoHomework}
+                    aria-pressed={noHomework}
+                  >
+                    <CircleSlash />
+                    {ka.lessons.noHomework}
+                  </Button>
+                )}
+              </>
+            )}
           </div>
         )}
 

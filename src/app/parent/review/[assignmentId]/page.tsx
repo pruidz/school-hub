@@ -41,6 +41,7 @@ export default async function ReviewPage({
     previousComments,
     queueNextId,
     queueRemaining,
+    author,
   } = bundle;
 
   return (
@@ -88,6 +89,16 @@ export default async function ReviewPage({
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             {assignment.source_ref ? (
               <span>{assignment.source_ref}</span>
+            ) : null}
+            {/* Quiet, in the same meta line as the dates — knowing the child
+                wrote this down at school changes how the parent reads the
+                title, but it is not a status. */}
+            {author ? (
+              <span>
+                {author === "child"
+                  ? ka.assignments.createdByChild
+                  : ka.assignments.createdByParent}
+              </span>
             ) : null}
             <span>{formatDueLabel(assignment.due_date)}</span>
             {assignment.submitted_at ? (

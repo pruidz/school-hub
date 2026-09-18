@@ -58,7 +58,9 @@ for (const f of files) {
 
 lines.push("commit;", "");
 
-fs.writeFileSync(OUT, lines.join("\n"), "utf8");
+const out = lines.join("\n");
+fs.writeFileSync(OUT, out, "utf8");
 console.log(
-  `supabase/APPLY_ALL.sql — ${files.length} migrations, ${lines.length} lines`,
+  `supabase/APPLY_ALL.sql — ${files.length} migrations, ` +
+    `${out.split("\n").length} lines`,
 );

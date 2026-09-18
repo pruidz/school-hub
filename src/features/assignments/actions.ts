@@ -25,9 +25,10 @@ import {
   ASSIGNMENT_TRANSITIONS,
   type AssignmentStatus,
 } from "@/lib/assignment-status";
-import { ka } from "@/lib/i18n/ka";
+import { ka, t } from "@/lib/i18n/ka";
 import { createClient } from "@/lib/supabase/server";
 
+import { formatShortDate, todayString } from "./dates";
 import {
   childInFamily,
   lessonBelongsToChild,
@@ -299,6 +300,147 @@ export async function deleteAssignmentAction(
 
   revalidateAssignment(existing.id, existing.childId);
   return ok(null);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  child — create (SPEC 3.1: the child records what was given)                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Trim-to-null, the shape every optional text field on the kid form uses. A
+ * child who types nothing must not produce an empty string in the database.
+ */
+function optionalText(max: number) {
+  return z
+    .string()
+    .max(max, ka.validation.tooLong)
+    .nullish()
+    .transform((value) => {
+      const trimmed = (value ?? "").trim();
+      return trimmed.length === 0 ? null : trimmed;
+    });
+}
+
+const kidAssignmentSchema = z.object({
+  title: optionalText(200),
+  description: optionalText(4000),
+  sourceRef: optionalText(300),
+  dueDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, ka.validation.dateInvalid)
+    .nullish()
+    .transform((value) => value ?? null),
+  subjectId: z.uuid().nullish().transform((value) => value ?? null),
+  lessonId: z.uuid().nullish().transform((value) => value ?? null),
+});
+
+/**
+ * "სათაური" is optional on purpose — the photo is the point and typing is the
+ * friction (SPEC section 6, point ი). A child who types nothing still has to
+ * end up with a row they can recognise in a list, so the title is derived from
+ * what is already known: the subject and the day the homework was given.
+ */
+function derivedTitle(subjectName: string | null, date: string): string {
+  return subjectName
+    ? t("assignments.kidAutoTitle", {
+        subject: subjectName,
+        date: formatShortDate(date),
+      })
+    : t("assignments.kidAutoTitleNoSubject", { date: formatShortDate(date) });
+}
+
+/**
+ * The child adding the homework they were given today.
+ *
+ * Mirrors `createAssignmentAction` but: the child is the caller, `child_id` is
+ * taken from the session and never from the form, `status` is left to the
+ * column default (`assigned`) so the status machine starts where it should,
+ * and `priority` / `topic_id` / `due_time` are not accepted at all — those stay
+ * the parent's. `assignments_insert_own` (0004, tightened in 0012) is the real
+ * enforcer of every one of those; the checks here exist to turn a rejection
+ * into a Georgian sentence instead of a 42501.
+ *
+ * Returns the new id rather than redirecting: the caller needs it to upload the
+ * photo of the book page into `{child_id}/{assignment_id}/…`.
+ */
+export async function createAssignmentAsChildAction(
+  input: z.input<typeof kidAssignmentSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const child = await requireChild();
+
+  const parsed = kidAssignmentSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail(
+      ka.assignments.errSaveFailed,
+      fieldErrorsFrom(z.flattenError(parsed.error).fieldErrors),
+    );
+  }
+
+  const supabase = await createClient();
+  const childId = child.childId;
+
+  // The lesson is read back through the user-scoped client, so a sibling's id
+  // is invisible here long before the policy would refuse it — and it supplies
+  // both the subject and the date the homework was given.
+  let lessonDate: string | null = null;
+  let subjectId = parsed.data.subjectId;
+
+  if (parsed.data.lessonId) {
+    const { data: lesson } = await supabase
+      .from("lessons")
+      .select("id, child_id, subject_id, date")
+      .eq("id", parsed.data.lessonId)
+      .maybeSingle();
+
+    if (!lesson || lesson.child_id !== childId) {
+      return fail(ka.assignments.errForbidden);
+    }
+    lessonDate = lesson.date;
+    if (!subjectId) subjectId = lesson.subject_id;
+  }
+
+  let subjectName: string | null = null;
+  if (subjectId) {
+    const { data: subject } = await supabase
+      .from("subjects")
+      .select("id, name, child_id")
+      .eq("id", subjectId)
+      .maybeSingle();
+
+    if (!subject || subject.child_id !== childId) {
+      return fail(ka.assignments.errForbidden);
+    }
+    subjectName = subject.name;
+  }
+
+  const title =
+    parsed.data.title ??
+    derivedTitle(subjectName, lessonDate ?? todayString());
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .insert({
+      child_id: childId,
+      title,
+      description: parsed.data.description,
+      source_ref: parsed.data.sourceRef,
+      due_date: parsed.data.dueDate,
+      subject_id: subjectId,
+      lesson_id: parsed.data.lessonId,
+      created_by: child.id,
+      // status, priority, topic_id and due_time are deliberately absent: the
+      // column defaults are the only values a child may start from.
+    })
+    .select("id, child_id")
+    .single();
+
+  if (error || !data) {
+    logDbError("assignments.createAsChild", error);
+    return fail(assignmentErrorMessage(error));
+  }
+
+  revalidateAssignment(data.id, data.child_id);
+  return ok({ id: data.id });
 }
 
 /* -------------------------------------------------------------------------- */

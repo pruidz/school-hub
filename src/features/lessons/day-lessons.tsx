@@ -4,6 +4,7 @@ import type { ChildUiMode } from "@/lib/db.types";
 import { ka, t } from "@/lib/i18n/ka";
 import { isoWeekday } from "@/features/schedule/dates";
 import { listTopics } from "@/features/schedule/queries";
+import { nextSchoolDay } from "@/features/assignments/queries";
 
 import { LessonCard } from "./lesson-card";
 import { LessonsAutoBuild } from "./lessons-auto-build";
@@ -29,10 +30,11 @@ export async function DayLessons({
 }) {
   const ui = lessonUi(uiMode);
 
-  const [lessons, topics, pending] = await Promise.all([
+  const [lessons, topics, pending, defaultDueDate] = await Promise.all([
     listDayLessons(childId, date),
     listTopics(childId),
     readOnly ? Promise.resolve(0) : countPendingLessons(childId, date, isoWeekday(date)),
+    nextSchoolDay(childId, date),
   ]);
 
   const suggestionsFor = (subjectId: string | null) =>
@@ -77,6 +79,7 @@ export async function DayLessons({
           ui={ui}
           childId={childId}
           topicSuggestions={suggestionsFor(lesson.subjectId)}
+          defaultDueDate={defaultDueDate}
           readOnly={readOnly}
         />
       ))}

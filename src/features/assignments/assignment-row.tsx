@@ -6,7 +6,7 @@ import { ka, t } from "@/lib/i18n/ka";
 import { cn } from "@/lib/utils";
 
 import { dueState, formatDueLabel } from "./dates";
-import type { SubjectLite } from "./queries";
+import type { AssignmentAuthor, SubjectLite } from "./queries";
 import { AssignmentStatusBadge } from "./status-badge";
 
 /**
@@ -21,6 +21,7 @@ export function AssignmentRow({
   subject,
   href,
   childName,
+  author,
   unreadCount = 0,
   size = "default",
   className,
@@ -29,6 +30,11 @@ export function AssignmentRow({
   subject: SubjectLite | null;
   href: string;
   childName?: string | null;
+  /**
+   * Who entered the row. Parent screens pass it; the kid list does not — a
+   * child does not need telling that they wrote their own homework down.
+   */
+  author?: AssignmentAuthor;
   unreadCount?: number;
   size?: "default" | "lg";
   className?: string;
@@ -84,6 +90,15 @@ export function AssignmentRow({
           {assignment.redo_count > 0 ? (
             <span>
               {t("assignments.redoCount", { count: assignment.redo_count })}
+            </span>
+          ) : null}
+          {/* Deliberately the same muted meta text as everything else on this
+              line, not a badge — it must not compete with the status. */}
+          {author ? (
+            <span>
+              {author === "child"
+                ? ka.assignments.createdByChild
+                : ka.assignments.createdByParent}
             </span>
           ) : null}
         </span>

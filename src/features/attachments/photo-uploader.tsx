@@ -58,6 +58,18 @@ export type PhotoUploaderProps = {
   onUploaded?: () => void;
   /** Photos already attached, so `max` counts the real total. */
   existingCount?: number;
+  /**
+   * Files picked BEFORE this component existed, queued once on mount.
+   *
+   * The kid quick-add flow (`features/assignments/kid-quick-add.tsx`) needs the
+   * camera to open on the same tap that eventually creates the assignment: the
+   * file input has to be clicked inside the real user gesture, but the upload
+   * target only exists once the row is inserted. So the caller owns the first
+   * picker, creates the row while the child is still in the camera app, then
+   * mounts this component with the photo already in hand. Read once — later
+   * changes to the array are ignored, so a re-render cannot re-upload.
+   */
+  initialFiles?: File[];
   disabled?: boolean;
   className?: string;
 };
@@ -88,6 +100,7 @@ export function PhotoUploader({
   label,
   onUploaded,
   existingCount = 0,
+  initialFiles,
   disabled = false,
   className,
 }: PhotoUploaderProps) {
@@ -245,11 +258,10 @@ export function PhotoUploader({
   /* --------------------------------------------------------------- pick --- */
 
   const addFiles = React.useCallback(
-    (fileList: FileList | null) => {
-      if (!fileList || fileList.length === 0) return;
+    (picked: File[]) => {
+      if (picked.length === 0) return;
       setNotice(null);
 
-      const picked = Array.from(fileList);
       const accepted: Item[] = [];
       let rejected: string | null = null;
 
@@ -292,6 +304,18 @@ export function PhotoUploader({
     },
     [drainQueue, max, remaining],
   );
+
+  // Queue the handover exactly once. `addFiles` is recreated whenever
+  // `remaining` changes, so the guard — not the dependency list — is what keeps
+  // the first photo from being uploaded twice.
+  const initialFilesRef = React.useRef(initialFiles);
+  const initialFilesDone = React.useRef(false);
+  React.useEffect(() => {
+    if (initialFilesDone.current) return;
+    initialFilesDone.current = true;
+    const handover = initialFilesRef.current;
+    if (handover && handover.length > 0) addFiles(handover);
+  }, [addFiles]);
 
   const retry = React.useCallback(
     (item: Item) => {
@@ -379,7 +403,7 @@ export function PhotoUploader({
         className="sr-only"
         tabIndex={-1}
         onChange={(event) => {
-          addFiles(event.target.files);
+          addFiles(Array.from(event.target.files ?? []));
           event.target.value = "";
         }}
       />
@@ -391,7 +415,7 @@ export function PhotoUploader({
         className="sr-only"
         tabIndex={-1}
         onChange={(event) => {
-          addFiles(event.target.files);
+          addFiles(Array.from(event.target.files ?? []));
           event.target.value = "";
         }}
       />
