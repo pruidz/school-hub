@@ -17,7 +17,14 @@ supabase/
     0007_privilege_hardening.sql
                           profiles.role lockdown, derived child_id on
                           messages/attachments, wider child column lock
+    0008_sibling_identity_scope.sql
+                          a child no longer sees a sibling's profiles /
+                          family_members row
   seed.sql                one family, one parent, two children, a full week
+  test/
+    bootstrap.sql         the parts of Supabase the migrations assume exist
+    harness.mjs           boots embedded Postgres, applies everything
+    rls.test.mjs          the RLS test suite (npm run test:db)
 ```
 
 Run them **in numeric order**. Each file is written to be re-runnable
@@ -50,7 +57,7 @@ supabase db reset          # re-applies migrations AND runs seed.sql
 
 1. Open your project → **SQL Editor** → **New query**.
 2. Paste the contents of `0001_extensions.sql`, run it.
-3. Repeat for `0002` … `0007` — one file at a time, in order. Do not merge them
+3. Repeat for `0002` … `0008` — one file at a time, in order. Do not merge them
    into one query; later files depend on objects created by earlier ones, and
    `0007` in particular must run after `0004`, which would otherwise re-grant
    the table-wide UPDATE on `profiles` that `0007` narrows.
@@ -92,6 +99,36 @@ assigned / 3 in_progress / 3 submitted / 2 approved / 2 redo, two of them with
 messages, 4 grades and 5 topic-mastery rows. The attachment rows point at paths
 in the `evidence` bucket; no image files are uploaded, so thumbnails 404 until
 you upload something yourself.
+
+---
+
+## Testing the RLS (`npm run test:db`)
+
+```bash
+npm run test:db
+```
+
+No Docker, no `psql`, no Supabase CLI. The harness boots a throwaway
+PostgreSQL 18 (`embedded-postgres`, already a devDependency), applies
+`test/bootstrap.sql`, then every migration in numeric order, then `seed.sql`
+**twice** (proving it is re-runnable and lands on identical data), and then runs
+~130 assertions as `anon`, as each child, as each parent and as `service_role`.
+Takes about six seconds. The scratch cluster lives in `.tmp/` and is deleted
+afterwards; `.tmp/` is gitignored.
+
+`test/bootstrap.sql` recreates only what the migrations assume Supabase
+provides — the `anon` / `authenticated` / `service_role` roles with Supabase's
+default privileges, `auth.users` with `auth.uid()` / `auth.role()` / `auth.jwt()`
+reading `request.jwt.claims`, and `storage.buckets` / `storage.objects`. It is
+deliberately no more permissive than production; every place it could not match
+the real thing is marked `DIVERGENCE:` in the file.
+
+**What it does not prove**, because a local Postgres has no GoTrue and no
+Storage API: JWT issuing and expiry, the storage `file_size_limit` and
+`allowed_mime_types` (enforced in the Storage service, not by a constraint),
+signed-URL generation, PostgREST's own request shaping, and Supabase's
+connection-pool defaults. Those still need the checklist in
+[`../docs/TESTING.md`](../docs/TESTING.md) against a real project.
 
 ---
 

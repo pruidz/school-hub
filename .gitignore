@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+# scratch data dir for the embedded Postgres used by `npm run test:db`
+/.tmp
 
 # next.js
 /.next/
