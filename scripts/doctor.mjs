@@ -156,6 +156,7 @@ const TABLES = [
   "topic_mastery",
   "notifications",
   "helper_invitations",
+  "push_subscriptions",
 ];
 
 console.log("\n[1mბაზა[0m");
