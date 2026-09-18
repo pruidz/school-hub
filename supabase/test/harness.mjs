@@ -429,11 +429,29 @@ async function tableCounts(client) {
 export async function startDatabase({ log = () => {} } = {}) {
   const { default: pg } = await import('pg');
 
-  await rm(path.join(REPO_ROOT, '.tmp'), { recursive: true, force: true });
-  await mkdir(DATA_DIR, { recursive: true });
+  // Windows can hold a handle on the previous run's data directory for a
+  // while after the postmaster exits (indexer, defender, an editor watching
+  // the tree). `rm` then throws EBUSY and the whole suite fails in `before()`
+  // with an error that has nothing to do with the SQL. Retry, and if the
+  // directory genuinely will not go, run in a fresh one instead of dying.
+  let dataDir = DATA_DIR;
+  let removed = false;
+  for (let attempt = 0; attempt < 5 && !removed; attempt += 1) {
+    try {
+      await rm(path.join(REPO_ROOT, '.tmp'), { recursive: true, force: true });
+      removed = true;
+    } catch {
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+  if (!removed) {
+    dataDir = `${DATA_DIR}-${process.pid}-${Date.now()}`;
+    log(`  .tmp is locked; using ${path.basename(dataDir)} instead`);
+  }
+  await mkdir(dataDir, { recursive: true });
 
   const server = new EmbeddedPostgres({
-    databaseDir: DATA_DIR,
+    databaseDir: dataDir,
     user: 'postgres',
     password: 'postgres',
     port: PORT,
@@ -518,7 +536,16 @@ export async function startDatabase({ log = () => {} } = {}) {
       } catch {
         /* already closed */
       }
-      await server.stop();
+      // `persistent: false` makes embedded-postgres delete the data directory
+      // inside stop(), and on Windows that races the handle the postmaster has
+      // only just released — it throws EBUSY and node:test reports the whole
+      // file as failed even though every assertion passed. The server is down
+      // either way; cleaning up is our job below.
+      try {
+        await server.stop();
+      } catch (error) {
+        if (error?.code !== 'EBUSY' && error?.code !== 'ENOTEMPTY') throw error;
+      }
       // Windows keeps a handle on the data directory for a moment after the
       // postmaster exits; a failed cleanup must not fail the test run.
       for (let attempt = 0; attempt < 5; attempt += 1) {

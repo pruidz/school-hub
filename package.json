@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:db": "node --test --test-concurrency=1 supabase/test/rls.test.mjs"
+    "test:db": "node --test --test-concurrency=1 supabase/test/rls.test.mjs",
+    "sql:bundle": "node scripts/bundle-sql.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
