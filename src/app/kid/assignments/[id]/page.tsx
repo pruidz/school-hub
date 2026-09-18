@@ -135,10 +135,15 @@ export default async function KidAssignmentPage({
 
       <section className="grid gap-3 rounded-xl border bg-card p-3">
         <h2 className="font-medium">{ka.kid.yourWork}</h2>
+        {/* A scrapped first take of a recitation used to be stuck here the
+            moment the page reloaded. `deletable` is only the affordance — the
+            window (own evidence, not yet handed in) is decided by
+            `deleteAttachmentAction` and by RLS, not by this prop. */}
         <EvidenceGallery
           attachments={solutionAttachments}
           zoom
           emptyLabel={ka.attachments.noEvidence}
+          deletable={!locked}
         />
 
         {!locked ? (

@@ -2,10 +2,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ka } from "@/lib/i18n/ka";
 
 /**
- * P3 overrides the segment skeleton: the review screen is a two-column split
- * (evidence left, actions and thread right), not the card grid every other
- * parent screen uses, and it is the slowest parent route — the bundle query,
- * two sets of signed URLs and the thread.
+ * P3 overrides the segment skeleton: the review screen is a chronology of
+ * attempts with the actions and the thread beside it, not the card grid every
+ * other parent screen uses, and it is the slowest parent route — the bundle
+ * query, one batch of signed URLs and the thread.
  */
 export default function ReviewLoading() {
   return (
@@ -28,17 +28,36 @@ export default function ReviewLoading() {
           <Skeleton className="h-3 w-1/2" />
         </div>
 
-        {/* split evidence panes */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          {[0, 1].map((pane) => (
-            <div key={pane} className="grid gap-2 rounded-xl border bg-card p-3">
-              <Skeleton className="h-4 w-28" />
-              <Skeleton className="aspect-[4/3] w-full rounded-lg" />
-              <div className="flex gap-2">
-                <Skeleton className="size-14 rounded-md" />
-                <Skeleton className="size-14 rounded-md" />
-                <Skeleton className="size-14 rounded-md" />
+        {/* the task strip */}
+        <div className="grid gap-2 rounded-xl border bg-card p-3">
+          <Skeleton className="h-4 w-24" />
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+            {[0, 1, 2].map((tile) => (
+              <Skeleton key={tile} className="aspect-square rounded-lg" />
+            ))}
+          </div>
+        </div>
+
+        {/* the attempt chronology */}
+        <div className="grid gap-2.5">
+          <Skeleton className="h-4 w-20" />
+          {[0, 1].map((attempt) => (
+            <div
+              key={attempt}
+              className="grid gap-3 rounded-xl border border-l-4 bg-card p-3"
+            >
+              <div className="flex items-center gap-2">
+                <Skeleton className="size-6 rounded-full" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-24 rounded-full" />
               </div>
+              {attempt === 0 ? null : (
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 lg:grid-cols-6">
+                  {[0, 1, 2, 3].map((tile) => (
+                    <Skeleton key={tile} className="aspect-square rounded-lg" />
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

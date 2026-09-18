@@ -4062,3 +4062,335 @@ describe('25. a recording is solution evidence, fenced exactly like a photo', ()
     }),
   );
 });
+
+// =============================================================================
+// 26. The delete window: a bad take is removable, handed-in work is not (0013)
+//
+// Audio made this urgent. A first take of a recitation is almost always
+// scrapped, and until 0013 a child who reloaded the page could not take one
+// back — `PhotoUploader` only offers an X on tiles it uploaded in the current
+// session. The review screen now offers the child a delete on their own
+// solution evidence, so the question "when is that legitimate?" has to have an
+// answer in the database and not only in a React prop.
+//
+// The rule 0013 writes down:
+//
+//   assigned | in_progress | redo   -> the child may delete their own evidence
+//   submitted | approved            -> only a parent may
+//
+// and, in every status: never a `review` annotation, and `chat` images are not
+// fenced at all (a photo in a conversation is a message, it hangs off the
+// assignment only so RLS can find its child).
+//
+// The interesting failure mode here is silence. RLS turns a forbidden DELETE
+// into "0 rows affected", not an error, so every refusal below asserts BOTH the
+// row count AND that the row is still present afterwards — a policy that
+// deleted the row and reported nothing, and a policy that refused, are
+// otherwise indistinguishable.
+// =============================================================================
+describe('26. a child may take back evidence only before handing it in (0013)', () => {
+  const objectName = (child, assignment) =>
+    `${child}/${assignment}/26-${Math.random().toString(16).slice(2)}.webp`;
+
+  /** Insert one attachment with service rights, returning its id. */
+  async function seedAttachment({
+    assignment = null,
+    lesson = null,
+    message = null,
+    child = ID.childA,
+    kind = 'solution',
+    uploadedBy = ID.childAUser,
+  } = {}) {
+    await s.asService();
+    const { rows } = await s.q(
+      `insert into public.attachments
+         (assignment_id, lesson_id, message_id, child_id, kind, storage_path,
+          mime, size_bytes, uploaded_by)
+       values ($1, $2, $3, $4, $5, $6, 'image/webp', 12345, $7)
+       returning id`,
+      [
+        assignment,
+        lesson,
+        message,
+        child,
+        kind,
+        objectName(child, assignment ?? lesson ?? message ?? 'x'),
+        uploadedBy,
+      ],
+    );
+    return rows[0].id;
+  }
+
+  async function stillThere(id) {
+    await s.asService();
+    const rows = await s.rows(
+      `select id from public.attachments where id = $1`,
+      [id],
+    );
+    return rows.length === 1;
+  }
+
+  // ------------------------------------------------------------- open ------
+  for (const [label, assignment] of [
+    ['assigned', ID.aAssigned],
+    ['in_progress', ID.aInProgress],
+    ['redo', ID.aRedo],
+  ]) {
+    test(
+      `child A can delete their own solution evidence while the work is ${label}`,
+      tx(async () => {
+        const id = await seedAttachment({ assignment });
+
+        await s.asUser(ID.childAUser);
+        const { rowCount } = await s.q(
+          `delete from public.attachments where id = $1`,
+          [id],
+        );
+
+        assert.equal(
+          rowCount,
+          1,
+          `proves: while the assignment is ${label} the evidence is still the child's to ` +
+            'change, which is the whole point of the affordance — a scrapped first take ' +
+            'must not survive a page reload',
+        );
+        assert.equal(
+          await stillThere(id),
+          false,
+          'proves: the row really went, rather than the delete being reported and ignored',
+        );
+      }),
+    );
+  }
+
+  // ------------------------------------------------------------ closed -----
+  for (const [label, assignment] of [
+    ['submitted', ID.aSubmitted],
+    ['approved', ID.aApproved],
+  ]) {
+    test(
+      `child A cannot delete their own solution evidence once the work is ${label}`,
+      tx(async () => {
+        const id = await seedAttachment({ assignment });
+
+        await s.asUser(ID.childAUser);
+        const { rowCount } = await s.q(
+          `delete from public.attachments where id = $1`,
+          [id],
+        );
+
+        assert.equal(
+          rowCount,
+          0,
+          `proves: from ${label} onwards what the parent is looking at is what the child ` +
+            'sent — the evidence cannot be edited out from under a review, and the UI ' +
+            'hiding the button is not the only thing stopping it',
+        );
+        assert.equal(
+          await stillThere(id),
+          true,
+          'proves: the refusal is a refusal, not a silent delete',
+        );
+      }),
+    );
+  }
+
+  test(
+    'the same child can still delete their own TASK photo only before submission',
+    tx(async () => {
+      const open = await seedAttachment({
+        assignment: ID.aInProgress,
+        kind: 'task_source',
+      });
+      const closed = await seedAttachment({
+        assignment: ID.aSubmitted,
+        kind: 'task_source',
+      });
+
+      await s.asUser(ID.childAUser);
+      const openDelete = await s.q(
+        `delete from public.attachments where id = $1`,
+        [open],
+      );
+      const closedDelete = await s.q(
+        `delete from public.attachments where id = $1`,
+        [closed],
+      );
+
+      assert.equal(
+        openDelete.rowCount,
+        1,
+        'proves: a child who photographed the wrong page of the book can replace it',
+      );
+      assert.equal(
+        closedDelete.rowCount,
+        0,
+        'proves: the fence covers task_source too — deleting the photo of what was set, ' +
+          'after handing in work against it, would rewrite the record of the assignment',
+      );
+    }),
+  );
+
+  test(
+    'a child cannot delete a review annotation, even while the work is open',
+    tx(async () => {
+      // uploaded_by is deliberately the CHILD here. A real review attachment is
+      // uploaded by the parent and the `uploaded_by = auth.uid()` clause alone
+      // would refuse it; forging that clause away is what isolates the new
+      // `kind <> 'review'` one and proves it is doing work of its own.
+      const id = await seedAttachment({
+        assignment: ID.aInProgress,
+        kind: 'review',
+        uploadedBy: ID.childAUser,
+      });
+
+      await s.asUser(ID.childAUser);
+      const { rowCount } = await s.q(
+        `delete from public.attachments where id = $1`,
+        [id],
+      );
+
+      assert.equal(
+        rowCount,
+        0,
+        "proves: the parent's own annotation of the work is never the child's to remove, " +
+          'whatever status the assignment is in',
+      );
+      assert.equal(await stillThere(id), true, 'proves: the row survived');
+    }),
+  );
+
+  test(
+    'a chat image is not fenced by the status of the assignment it hangs off',
+    tx(async () => {
+      await s.asService();
+      const { rows: message } = await s.q(
+        `insert into public.messages (assignment_id, child_id, author_id, body)
+         values ($1, $2, $3, 'gamarjoba') returning id`,
+        [ID.aSubmitted, ID.childA, ID.childAUser],
+      );
+      const id = await seedAttachment({
+        assignment: ID.aSubmitted,
+        message: message[0].id,
+        kind: 'chat',
+      });
+
+      await s.asUser(ID.childAUser);
+      const { rowCount } = await s.q(
+        `delete from public.attachments where id = $1`,
+        [id],
+      );
+
+      assert.equal(
+        rowCount,
+        1,
+        'proves: 0013 fences evidence OF the work, not the conversation about it — a ' +
+          'submitted assignment must not make the thread partly immutable',
+      );
+    }),
+  );
+
+  test(
+    'a lesson photo carries no assignment status and is untouched',
+    tx(async () => {
+      const id = await seedAttachment({
+        assignment: null,
+        lesson: ID.aLesson,
+        kind: 'task_source',
+      });
+
+      await s.asUser(ID.childAUser);
+      const { rowCount } = await s.q(
+        `delete from public.attachments where id = $1`,
+        [id],
+      );
+
+      assert.equal(
+        rowCount,
+        1,
+        'proves: the `assignment_id is null` branch keeps A3 lesson screens working ' +
+          'exactly as they did',
+      );
+    }),
+  );
+
+  test(
+    'a parent still deletes evidence in any status, which is the escape hatch',
+    tx(async () => {
+      const submitted = await seedAttachment({ assignment: ID.aSubmitted });
+      const approved = await seedAttachment({ assignment: ID.aApproved });
+
+      await s.asUser(ID.parent1User);
+      const { rowCount } = await s.q(
+        `delete from public.attachments where id in ($1, $2)`,
+        [submitted, approved],
+      );
+
+      assert.equal(
+        rowCount,
+        2,
+        'proves: attachments_parent_all is untouched by 0013 — a mis-shot photo is still ' +
+          'fixable after submission, by the one person the fence is protecting',
+      );
+    }),
+  );
+
+  test(
+    'a child still cannot reach a sibling recording through the new clause',
+    tx(async () => {
+      const id = await seedAttachment({
+        assignment: ID.bSubmitted,
+        child: ID.childB,
+        uploadedBy: ID.childBUser,
+      });
+
+      await s.asUser(ID.childAUser);
+      const { rowCount } = await s.q(
+        `delete from public.attachments where id = $1`,
+        [id],
+      );
+
+      assert.equal(
+        rowCount,
+        0,
+        'proves: adding a status branch did not widen the child fence — child_id is still ' +
+          'the first thing the policy checks',
+      );
+      assert.equal(await stillThere(id), true, 'proves: the row survived');
+    }),
+  );
+
+  test(
+    'the status lookup the policy uses is security definer and closed to anon',
+    tx(async () => {
+      await s.asService();
+      const rows = await s.rows(
+        `select p.prosecdef, p.provolatile,
+                has_function_privilege('anon', p.oid, 'execute')          as anon_ok,
+                has_function_privilege('authenticated', p.oid, 'execute') as auth_ok
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'assignment_status'`,
+      );
+
+      assert.equal(rows.length, 1, 'proves: 0013 created the lookup');
+      assert.equal(
+        rows[0].prosecdef,
+        true,
+        'proves: it is security definer — a policy body runs as the caller, so a plain ' +
+          'select inside it would be filtered by the assignments policies and evaluate to ' +
+          'null, which reads as "deny" and would hide the real rule',
+      );
+      assert.equal(
+        rows[0].provolatile,
+        's',
+        'proves: STABLE, so the planner may call it once per statement rather than per row',
+      );
+      assert.deepEqual(
+        { anon: rows[0].anon_ok, authenticated: rows[0].auth_ok },
+        { anon: false, authenticated: true },
+        'proves: the grant matches every other helper in 0003 — anon can execute nothing',
+      );
+    }),
+  );
+});

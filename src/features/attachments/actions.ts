@@ -26,7 +26,11 @@ import {
 } from "@/features/assignments/access";
 import { logDbError, uploadErrorMessage } from "@/features/assignments/errors";
 import { fail, ok, type ActionResult } from "@/lib/auth/result";
-import type { Attachment } from "@/lib/db.types";
+import type {
+  Attachment,
+  AttachmentKind,
+  AssignmentStatus,
+} from "@/lib/db.types";
 import { ka } from "@/lib/i18n/ka";
 import {
   MAX_AUDIO_BYTES,
@@ -227,8 +231,34 @@ export async function registerAttachmentAction(
 const deleteSchema = z.object({ attachmentId: z.uuid() });
 
 /**
+ * The statuses in which an assignment's evidence is still the child's to
+ * change. Mirrors the `attachments_delete_own` policy in
+ * `supabase/migrations/0013_child_evidence_delete_window.sql` — change both
+ * together.
+ *
+ * `submitted` is deliberately outside it: from the moment the work is handed
+ * in, what the parent is looking at must be what the child sent. `approved` is
+ * outside it for the same reason — the record of accepted work is not
+ * retractable.
+ */
+const CHILD_EDITABLE_STATUSES: AssignmentStatus[] = [
+  "assigned",
+  "in_progress",
+  "redo",
+];
+
+/** Evidence kinds the window above applies to. `chat` is a message, not work. */
+const FENCED_KINDS: AttachmentKind[] = ["solution", "task_source"];
+
+/**
  * Remove an attachment the caller owns. The row goes first: an orphan blob is
  * invisible, an orphan row renders as a broken tile.
+ *
+ * A child may take back their OWN evidence while the assignment is still
+ * `assigned`, `in_progress` or `redo` — a scrapped first take of a recitation
+ * is the ordinary case — and never after it has been submitted, and never the
+ * parent's `review` annotations. This is enforced here and, independently, by
+ * RLS: the UI hiding the button is the third line of defence, not the first.
  */
 export async function deleteAttachmentAction(
   input: z.input<typeof deleteSchema>,
@@ -241,14 +271,37 @@ export async function deleteAttachmentAction(
 
   const { data: attachment } = await supabase
     .from("attachments")
-    .select("id, child_id, assignment_id, lesson_id, storage_path, thumb_path")
+    .select(
+      "id, child_id, assignment_id, lesson_id, kind, storage_path, thumb_path",
+    )
     .eq("id", parsed.data.attachmentId)
     .maybeSingle();
 
   if (!attachment) return fail(ka.attachments.errDeleteFailed);
 
-  if (caller.role === "child" && attachment.child_id !== caller.session.childId) {
-    return fail(ka.attachments.errForbidden);
+  if (caller.role === "child") {
+    if (attachment.child_id !== caller.session.childId) {
+      return fail(ka.attachments.errForbidden);
+    }
+    // The parent's own annotation of the work. Never the child's to remove,
+    // whatever state the assignment is in.
+    if (attachment.kind === "review") {
+      return fail(ka.attachments.errForbidden);
+    }
+    if (
+      attachment.assignment_id &&
+      FENCED_KINDS.includes(attachment.kind)
+    ) {
+      const assignment = await loadAssignment(
+        supabase,
+        caller,
+        attachment.assignment_id,
+      );
+      if (!assignment) return fail(ka.attachments.errForbidden);
+      if (!CHILD_EDITABLE_STATUSES.includes(assignment.status)) {
+        return fail(ka.attachments.errDeleteLocked);
+      }
+    }
   }
   if (caller.role === "parent") {
     const { data: child } = await supabase

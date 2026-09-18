@@ -178,6 +178,11 @@ export const ka = {
     errNotAudio: "აირჩიე ხმოვანი ჩანაწერი (m4a, mp3, ogg ან webm)",
     errAudioTooLarge: "ჩანაწერი ძალიან დიდია — მაქსიმუმ 10 MB",
     errEmptyRecording: "ჩანაწერი ცარიელია — სცადე თავიდან",
+
+    // removing a bad take before the work is handed in
+    recordingRemoved: "ჩანაწერი წაიშალა",
+    errDeleteLocked:
+      "ჩაბარების შემდეგ წაშლა აღარ შეიძლება — მიწერე მშობელს ჩატში",
   },
 
   // ---------------------------------------------------------------- auth ---
@@ -653,6 +658,48 @@ export const ka = {
     taskFromParent: "დავალების ფოტო",
     yourWork: "შენი ამოხსნა",
 
+    // home dashboard + week grid (C1 / C6, SPEC 4a)
+    viewDay: "დღე",
+    viewWeek: "კვირა",
+    weekTitle: "კვირის ცხრილი",
+    weekPrev: "წინა კვირა",
+    weekNext: "შემდეგი კვირა",
+    weekThis: "ეს კვირა",
+    weekRange: "{from} – {to}",
+    weekEmpty: "ცხრილი ჯერ არ არის შევსებული",
+    weekEmptyHint: "სთხოვე მშობელს, რომ გაკვეთილების ცხრილი შეავსოს",
+    weekDayEmpty: "გაკვეთილი არ არის",
+    weekLegend: "ფერების მნიშვნელობა",
+
+    sectionOverdue: "გადაცილებული",
+    sectionToRecord: "ჩასაწერი",
+    sectionTomorrow: "ხვალისთვის",
+    sectionUrgent: "სასწრაფო",
+    sectionPrepare: "მოსამზადებელი",
+    sectionReturned: "გადასაკეთებელი",
+
+    toRecordCount: "{count} საგანი — ჩასაწერია",
+    toRecordHint: "ჯერ ჩაწერე, რა დაგავალეს — ან მონიშნე, რომ არ მოგცეს",
+    allRecorded: "ყველაფერი ჩაწერილია",
+    recordedAlready: "უკვე ჩაწერილი",
+    allRecordedOpen: "დღევანდელი გაკვეთილების ნახვა",
+    nothingToday: "დღეს გაკვეთილი არ გქონია",
+
+    forDate: "{date}-ისთვის",
+    tomorrowEmpty: "შემდეგი დღისთვის არაფერია",
+    prepareEmpty: "სხვა დავალება არ გაქვს",
+
+    cellEmpty: "ჩასაწერია",
+    cellNone: "დავალება არ მოგვცეს",
+    cellTodo: "შესასრულებელია",
+    cellSubmitted: "ჩაბარებულია",
+    cellApproved: "დადასტურებულია",
+    cellOverdue: "ვადაგადაცილებული",
+
+    cellNotYet: "ეს გაკვეთილი ჯერ არ ჩატარებულა",
+    cellOpenDay: "ამ დღის გახსნა",
+    cellClose: "დახურვა",
+
     // error boundary
     errorTitle: "უი, რაღაც აირია",
     errorBody: "არაუშავს — სცადე თავიდან.",
@@ -968,6 +1015,33 @@ export const ka = {
     // promise a photo
     noSolutionEvidence: "ამოხსნა ჯერ არ არის — არც ფოტო, არც ჩანაწერი",
     listenHint: "ზეპირი დავალება — მოუსმინე და შემდეგ შეაფასე",
+
+    // ---- v2: the attempt chronology (SPEC 4b) -----------------------------
+    taskTitle: "დავალება",
+    taskHint: "დაწკაპუნებით — მთელ ეკრანზე",
+    attemptsTitle: "ცდები",
+    attemptCount: "{count} ცდა",
+    attempt: "ცდა {index}",
+    attemptOf: "ცდა {index} / {total}",
+    attemptCurrent: "მიმდინარე ცდა",
+    attemptLatest: "ბოლო ცდა",
+    attemptSubmitted: "ჩააბარა {date}",
+    attemptNotSubmitted: "ჯერ არ ჩაუბარებია",
+    attemptAwaiting: "ახლა შესამოწმებელი",
+    attemptApproved: "დადასტურდა",
+    attemptRedo: "დაბრუნდა გადასაკეთებლად",
+    attemptNoVerdict: "შეფასების გარეშე",
+    attemptNoEvidence: "ამ ცდაში ფაილი არ დაერთო",
+    attemptNoComment: "კომენტარის გარეშე",
+    attemptFeedbackLost:
+      "ამ ცდის თვითშეფასება აღარ ინახება — ბაზაში მხოლოდ ბოლო ცდის მონაცემებია",
+    olderAttempts: "წინა ცდები",
+    showAttempt: "გახსნა",
+    evidenceCount: "{photos} ფოტო · {recordings} ჩანაწერი",
+    photosOnly: "{count} ფოტო",
+    recordingsOnly: "{count} ჩანაწერი",
+    verdictBar: "გადაწყვეტილება",
+    annotations: "მშობლის მინაწერი",
   },
 
   // ------------------------------------------------------------ schedule ---

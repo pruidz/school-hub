@@ -25,17 +25,21 @@ import {
 } from "@/features/assignments/actions";
 import type { AssignmentStatus } from "@/lib/assignment-status";
 import { ka, t } from "@/lib/i18n/ka";
+import { cn } from "@/lib/utils";
 
 export function ReviewActions({
   assignmentId,
   status,
   queueNextId,
   queueRemaining,
+  className,
 }: {
   assignmentId: string;
   status: AssignmentStatus;
   queueNextId: string | null;
   queueRemaining: number;
+  /** The page drops the card chrome when this sits in the mobile tray. */
+  className?: string;
 }) {
   const router = useRouter();
   const [comment, setComment] = React.useState("");
@@ -163,7 +167,9 @@ export function ReviewActions({
   /* --------------------------------------------------------- render ------ */
 
   return (
-    <section className="grid gap-3 rounded-xl border bg-card p-3">
+    <section
+      className={cn("grid gap-3 rounded-xl border bg-card p-3", className)}
+    >
       {!reviewable && !reopenable ? (
         <p className="text-sm text-muted-foreground">
           {ka.review.notSubmitted}
@@ -283,7 +289,9 @@ export function ReviewActions({
         </Button>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      {/* Keyboard hints are noise on the phone tray, where there is no
+          keyboard and every line of height is taken from the work itself. */}
+      <p className="hidden text-[11px] text-muted-foreground xl:block">
         {ka.review.shortcuts}: {ka.review.shortcutApprove} ·{" "}
         {ka.review.shortcutRedo} · {ka.review.shortcutNext}
       </p>

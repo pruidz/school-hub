@@ -21,7 +21,7 @@
  */
 
 import * as React from "react";
-import { Mic } from "lucide-react";
+import { Mic, X } from "lucide-react";
 
 import { formatDuration } from "@/lib/images";
 import { ka, t } from "@/lib/i18n/ka";
@@ -39,6 +39,15 @@ export type AudioEvidenceListProps = {
   attachments: Attachment[];
   /** Shown instead of the list when there is nothing. `null` renders nothing. */
   emptyLabel?: string | null;
+  /**
+   * `storage_path` -> signed URL from the server, so a page that already signed
+   * its evidence in one batch (the review screen) plays without a per-recording
+   * round trip. Re-signing on expiry still happens here.
+   */
+  initialUrls?: Record<string, string | null>;
+  /** When given, each row carries a remove button. The caller does the delete. */
+  onDelete?: (attachment: Attachment) => void;
+  busyIds?: readonly string[];
   className?: string;
 };
 
@@ -49,6 +58,9 @@ export type AudioEvidenceListProps = {
 export function AudioEvidenceList({
   attachments,
   emptyLabel = null,
+  initialUrls,
+  onDelete,
+  busyIds,
   className,
 }: AudioEvidenceListProps) {
   const ordered = React.useMemo(
@@ -70,6 +82,9 @@ export function AudioEvidenceList({
         <li key={attachment.id}>
           <AudioEvidence
             attachment={attachment}
+            initialUrl={initialUrls?.[attachment.storage_path] ?? null}
+            onDelete={onDelete ? () => onDelete(attachment) : undefined}
+            busy={busyIds?.includes(attachment.id)}
             label={t("attachments.recordingIndex", {
               index: index + 1,
               total: ordered.length,
@@ -84,12 +99,19 @@ export function AudioEvidenceList({
 export function AudioEvidence({
   attachment,
   label,
+  initialUrl = null,
+  onDelete,
+  busy = false,
 }: {
   attachment: Attachment;
   label?: string;
+  /** Signed on the server with the page. Saves the first round trip. */
+  initialUrl?: string | null;
+  onDelete?: () => void;
+  busy?: boolean;
 }) {
   const audioRef = React.useRef<HTMLAudioElement>(null);
-  const [url, setUrl] = React.useState<string | null>(null);
+  const [url, setUrl] = React.useState<string | null>(initialUrl);
   const [failed, setFailed] = React.useState(false);
   const [duration, setDuration] = React.useState<number | null>(null);
 
@@ -130,7 +152,17 @@ export function AudioEvidence({
     [path],
   );
 
+  /** Skips exactly one signing round trip — the one the server already made. */
+  const seededRef = React.useRef(Boolean(initialUrl));
+
   React.useEffect(() => {
+    if (seededRef.current) {
+      seededRef.current = false;
+      // The server minted it as the page rendered, which is close enough to
+      // "now" for the re-sign-before-play check to be honest.
+      signedAtRef.current = Date.now();
+      return;
+    }
     void sign();
   }, [sign]);
 
@@ -242,6 +274,18 @@ export function AudioEvidence({
           </p>
         )}
       </div>
+
+      {onDelete ? (
+        <button
+          type="button"
+          aria-label={ka.attachments.removeRecording}
+          disabled={busy}
+          onClick={onDelete}
+          className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          <X className="size-4" />
+        </button>
+      ) : null}
     </div>
   );
 }

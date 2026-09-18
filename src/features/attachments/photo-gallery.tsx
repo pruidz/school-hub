@@ -29,6 +29,22 @@ export type PhotoGalleryProps = {
   emptyLabel?: string;
   /** Tailwind column classes for the thumbnail grid. */
   gridClassName?: string;
+  /**
+   * `storage_path` -> signed URL, signed on the server and handed over with the
+   * first paint. A Server Component that already knows every path (the review
+   * screen signs all of an assignment's evidence in one call) passes this and
+   * the gallery makes no signing round trip of its own — which is what keeps a
+   * three-attempt review page at zero client fetches instead of one per block.
+   * Anything missing from the map is still signed lazily, as before.
+   */
+  initialUrls?: Record<string, string | null>;
+  /**
+   * When given, each thumbnail carries a remove button. The caller owns the
+   * confirmation and the delete itself; this component only surfaces the tap.
+   */
+  onDelete?: (attachment: Attachment) => void;
+  /** Ids currently being deleted — their buttons are disabled. */
+  busyIds?: readonly string[];
   className?: string;
 };
 
@@ -46,6 +62,9 @@ export function PhotoGallery({
   zoom = true,
   emptyLabel,
   gridClassName,
+  initialUrls,
+  onDelete,
+  busyIds,
   className,
 }: PhotoGalleryProps) {
   const ordered = React.useMemo(
@@ -59,15 +78,24 @@ export function PhotoGallery({
   );
 
   const pathKey = ordered.map((item) => item.storage_path).join("\n");
-  const [urls, setUrls] = React.useState<SignedUrlMap>({});
+  const [urls, setUrls] = React.useState<SignedUrlMap>(() => ({
+    ...initialUrls,
+  }));
   const [openIndex, setOpenIndex] = React.useState<number | null>(null);
 
   /**
    * Paths already asked for, so a re-render that adds one photo signs that one
    * path instead of the whole list again. Kept in a ref because it must not
-   * itself re-trigger the effect.
+   * itself re-trigger the effect. Server-signed paths start out in it: they are
+   * already answered, so the effect below has nothing to fetch.
    */
-  const requestedRef = React.useRef<Set<string>>(new Set());
+  const requestedRef = React.useRef<Set<string>>(
+    new Set(
+      Object.entries(initialUrls ?? {})
+        .filter(([, url]) => Boolean(url))
+        .map(([path]) => path),
+    ),
+  );
 
   // The map is keyed per path and merged, never replaced: a `router.refresh()`
   // after an upload adds the new path and leaves every thumbnail that is
@@ -119,7 +147,7 @@ export function PhotoGallery({
           const entry = urls[attachment.storage_path];
           const url = entry ?? undefined;
           return (
-            <li key={attachment.id}>
+            <li key={attachment.id} className="relative">
               <button
                 type="button"
                 disabled={!zoom || !url}
@@ -156,6 +184,18 @@ export function PhotoGallery({
                   </span>
                 )}
               </button>
+
+              {onDelete ? (
+                <button
+                  type="button"
+                  aria-label={ka.attachments.removePhoto}
+                  disabled={busyIds?.includes(attachment.id)}
+                  onClick={() => onDelete(attachment)}
+                  className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-full bg-background/90 text-foreground shadow-sm disabled:opacity-50"
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
             </li>
           );
         })}

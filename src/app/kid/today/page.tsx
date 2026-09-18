@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 
 import { requireChild } from "@/lib/auth/session";
 import { ka } from "@/lib/i18n/ka";
-import { getKidProfile } from "@/features/children/queries";
 import { isIsoDate, todayIso } from "@/features/schedule/dates";
-import { DayLessons } from "@/features/lessons/day-lessons";
-import { KidDayAssignments } from "@/features/assignments";
+import { KidDashboard } from "@/features/kid-home/dashboard";
+import { getKidHome } from "@/features/kid-home/queries";
+import { ViewToggle } from "@/features/kid-home/view-toggle";
 
 import { DayNav } from "./day-nav";
 
 export const metadata: Metadata = { title: ka.kid.todayTitle };
 
 /**
- * C1 / C2 — the child's main screen: today's lessons, what was covered in each
- * of them, a photo of the book page, and the day's homework underneath.
+ * C1 — the child's home screen (SPEC 4a).
+ *
+ * One read (`getKidHome`) feeds the whole page, so the screen the child opens
+ * twenty times a day costs eight Supabase round trips in two waves rather than
+ * one per section. `<KidDashboard>` decides what dominates; see its comment.
  *
  * `?d=` may only ever point at today or the past; a hand-typed future date is
  * clamped back to today rather than 404-ing, because a kid landing on an error
@@ -32,24 +34,13 @@ export default async function KidTodayPage({
   const requested = typeof d === "string" && isIsoDate(d) ? d : today;
   const date = requested > today ? today : requested;
 
-  const profile = await getKidProfile(child.childId);
-  if (!profile) notFound();
+  const home = await getKidHome(child.childId, date, today);
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
+      <ViewToggle current="day" />
       <DayNav date={date} />
-
-      <DayLessons
-        childId={child.childId}
-        date={date}
-        uiMode={profile.uiMode}
-      />
-
-      <section className="grid gap-3">
-        <h2 className="text-lg font-semibold">{ka.kid.assignmentsHeading}</h2>
-        {/* Owned by A4 — see the contract in CLAUDE.md. */}
-        <KidDayAssignments childId={child.childId} date={date} />
-      </section>
+      <KidDashboard home={home} childId={child.childId} />
     </div>
   );
 }

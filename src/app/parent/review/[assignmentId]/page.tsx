@@ -1,26 +1,36 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Pencil, Star } from "lucide-react";
+import { Headphones, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  formatDateTime,
-  formatDueLabel,
-} from "@/features/assignments/dates";
+import { formatDateTime, formatDueLabel } from "@/features/assignments/dates";
 import { getReviewBundle } from "@/features/assignments/queries";
 import { AssignmentStatusBadge } from "@/features/assignments/status-badge";
+import { getSignedUrls } from "@/features/attachments/signed-urls";
+import { PhotoGallery } from "@/features/attachments/photo-gallery";
 import { MessageThread } from "@/features/messages/message-thread";
 import { ka, t } from "@/lib/i18n/ka";
+import { cn } from "@/lib/utils";
 
-import { EvidencePanes } from "./evidence-panes";
+import { AttemptTimeline, hasRecordings } from "./attempt-timeline";
 import { ReviewActions } from "./review-actions";
 
 export const metadata: Metadata = { title: ka.review.title };
 
 /**
- * P3 — the review screen. Split evidence, the child's own read on the work,
- * the history of what was asked for before, the actions, and the thread.
+ * P3 — the review screen, v2 (SPEC 4b).
+ *
+ * One vertical chronology instead of the old left/right split. The task sits at
+ * the top as a strip of thumbnails, then one block per attempt, then the
+ * verdict. The thread is beside it on a desktop and under it on a phone, so a
+ * whole piece of homework — what was set, every round of it, what was said
+ * about each round, and the conversation — is one page.
+ *
+ * Every signed URL for every photo and recording on the page is minted here, in
+ * ONE call, and handed down. The galleries therefore fetch nothing: a
+ * three-attempt assignment costs the same number of round trips as an empty
+ * one.
  */
 export default async function ReviewPage({
   params,
@@ -37,15 +47,35 @@ export default async function ReviewPage({
     subject,
     topicName,
     taskAttachments,
-    solutionAttachments,
-    previousComments,
+    attempts,
     queueNextId,
     queueRemaining,
     author,
   } = bundle;
 
+  const urls = await getSignedUrls([
+    ...taskAttachments.map((file) => file.storage_path),
+    ...attempts.flatMap((attempt) =>
+      attempt.attachments.map((file) => file.storage_path),
+    ),
+  ]);
+
+  const listen = hasRecordings(attempts);
+
+  // Only pin the verdict to the bottom of a phone screen when there is a
+  // verdict to give. On work that is still being done, ReviewActions is a note
+  // saying so, and a permanent tray holding a note would cost a fifth of the
+  // screen for nothing.
+  const actionable =
+    assignment.status === "submitted" || assignment.status === "approved";
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+    <div
+      className={cn(
+        "grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start xl:pb-0",
+        actionable && "pb-52",
+      )}
+    >
       <div className="grid min-w-0 gap-4">
         <header className="grid gap-2">
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -87,9 +117,7 @@ export default async function ReviewPage({
           </div>
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            {assignment.source_ref ? (
-              <span>{assignment.source_ref}</span>
-            ) : null}
+            {assignment.source_ref ? <span>{assignment.source_ref}</span> : null}
             {/* Quiet, in the same meta line as the dates — knowing the child
                 wrote this down at school changes how the parent reads the
                 title, but it is not a status. */}
@@ -108,13 +136,6 @@ export default async function ReviewPage({
                 })}
               </span>
             ) : null}
-            {assignment.reviewed_at ? (
-              <span>
-                {t("assignments.reviewedAt", {
-                  date: formatDateTime(assignment.reviewed_at),
-                })}
-              </span>
-            ) : null}
           </div>
 
           {assignment.description ? (
@@ -124,106 +145,68 @@ export default async function ReviewPage({
           ) : null}
         </header>
 
-        <EvidencePanes
-          taskAttachments={taskAttachments}
-          solutionAttachments={solutionAttachments}
-        />
+        {/* Says "this one has to be listened to" before the parent has scrolled
+            anywhere, so a recitation is never ticked off unheard. */}
+        {listen ? (
+          <p className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary">
+            <Headphones className="size-3.5 shrink-0" />
+            {ka.review.listenHint}
+          </p>
+        ) : null}
 
-        <section className="grid gap-3 rounded-xl border bg-card p-3">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {ka.review.childFeedback}
-          </h2>
-
-          <dl className="grid gap-3 sm:grid-cols-3">
-            <div className="grid gap-0.5">
-              <dt className="text-xs text-muted-foreground">
-                {ka.assignments.selfRating}
-              </dt>
-              <dd className="flex items-center gap-1 text-sm font-medium">
-                {assignment.self_rating ? (
-                  <>
-                    <Star className="size-4 fill-amber-400 text-amber-500" />
-                    {assignment.self_rating} / 5
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">
-                    {ka.review.noSelfRating}
-                  </span>
-                )}
-              </dd>
-            </div>
-
-            <div className="grid gap-0.5">
-              <dt className="text-xs text-muted-foreground">
-                {ka.assignments.minutesSpent}
-              </dt>
-              <dd className="flex items-center gap-1 text-sm font-medium">
-                {assignment.minutes_spent !== null ? (
-                  <>
-                    <Clock className="size-4 text-muted-foreground" />
-                    {assignment.minutes_spent} {ka.assignments.minutesUnit}
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">
-                    {ka.review.noMinutes}
-                  </span>
-                )}
-              </dd>
-            </div>
-
-            <div className="grid gap-0.5 sm:col-span-1">
-              <dt className="text-xs text-muted-foreground">
-                {ka.assignments.difficultyNote}
-              </dt>
-              <dd className="text-sm whitespace-pre-wrap">
-                {assignment.difficulty_note ?? (
-                  <span className="text-muted-foreground">
-                    {ka.review.noDifficultyNote}
-                  </span>
-                )}
-              </dd>
-            </div>
-          </dl>
+        {/* The task itself: small tiles, because it is context, not the thing
+            being judged. Tapping one opens the same full-screen zoom. */}
+        <section className="grid gap-2 rounded-xl border bg-card p-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {ka.review.taskTitle}
+            </h2>
+            {taskAttachments.length > 0 ? (
+              <span className="text-[11px] text-muted-foreground">
+                {ka.review.taskHint}
+              </span>
+            ) : null}
+          </div>
+          <PhotoGallery
+            attachments={taskAttachments}
+            zoom
+            initialUrls={urls}
+            gridClassName="grid-cols-4 sm:grid-cols-6 lg:grid-cols-8"
+            emptyLabel={ka.review.noTaskPhotos}
+          />
         </section>
 
-        {assignment.redo_count > 0 || previousComments.length > 0 ? (
-          <section className="grid gap-2 rounded-xl border bg-card p-3">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              {ka.review.previousComments}
-            </h2>
-            {previousComments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {ka.review.noPreviousComments}
-              </p>
-            ) : (
-              <ul className="grid gap-2">
-                {previousComments.map((entry) => (
-                  <li
-                    key={entry.id}
-                    className="rounded-lg border-l-2 border-destructive/50 bg-muted/40 px-3 py-2"
-                  >
-                    <p className="text-sm whitespace-pre-wrap">
-                      {entry.comment}
-                    </p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {entry.actorName ? `${entry.actorName} · ` : ""}
-                      {formatDateTime(entry.createdAt)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        ) : null}
+        <AttemptTimeline attempts={attempts} urls={urls} />
       </div>
 
-      <aside className="grid gap-4 xl:sticky xl:top-4">
-        <ReviewActions
-          assignmentId={assignment.id}
-          status={assignment.status}
-          queueNextId={queueNextId}
-          queueRemaining={queueRemaining}
-        />
+      {/* `contents` on a phone so the two halves of this column can be placed
+          independently: the verdict is pinned to the bottom of the screen and
+          the thread simply follows the timeline. On a desktop the aside becomes
+          a real sticky column again and both sit inside it. */}
+      <aside className="contents xl:sticky xl:top-4 xl:grid xl:gap-4">
+        {/* SPEC 4b: ✓ / ↻ reachable without hunting. A parent reviewing from
+            bed should never have to scroll past three attempts to act, so on a
+            phone this is a tray at the bottom of the viewport rather than a
+            card at the bottom of the page. One mount, so the keyboard
+            shortcuts are still bound exactly once. */}
+        <div
+          className={cn(
+            actionable &&
+              "fixed inset-x-0 bottom-0 z-30 max-h-[70vh] overflow-y-auto border-t bg-background/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur xl:static xl:max-h-none xl:overflow-visible xl:border-0 xl:bg-transparent xl:p-0 xl:backdrop-blur-none",
+          )}
+        >
+          <ReviewActions
+            assignmentId={assignment.id}
+            status={assignment.status}
+            queueNextId={queueNextId}
+            queueRemaining={queueRemaining}
+            className={
+              actionable
+                ? "border-0 bg-transparent p-0 xl:border xl:bg-card xl:p-3"
+                : undefined
+            }
+          />
+        </div>
 
         <section className="grid gap-2 rounded-xl border bg-card p-3">
           <h2 className="text-sm font-medium text-muted-foreground">

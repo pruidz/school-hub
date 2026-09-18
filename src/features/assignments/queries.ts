@@ -20,6 +20,7 @@ import type {
 } from "@/lib/db.types";
 import { createClient, type ServerClient } from "@/lib/supabase/server";
 import { splitEvidence } from "@/features/attachments/audio";
+import { buildAttempts, type ReviewAttempt } from "@/features/review/attempts";
 import { addDaysIso, isoWeekday } from "@/features/schedule/dates";
 
 import { todayString, weekBounds } from "./dates";
@@ -258,6 +259,12 @@ export type ReviewBundle = {
   topicName: string | null;
   taskAttachments: Attachment[];
   solutionAttachments: Attachment[];
+  /**
+   * The same evidence, grouped into the rounds it was handed in over (SPEC 4b).
+   * Derived from `assignment_events`, so assignments that predate the grouping
+   * split correctly — see `features/review/attempts.ts`.
+   */
+  attempts: ReviewAttempt[];
   previousComments: ReviewComment[];
   queueNextId: string | null;
   queueRemaining: number;
@@ -288,13 +295,16 @@ export async function getReviewBundle(
 
   const [attachments, events, queue, topic] = await Promise.all([
     listAttachments(supabase, [assignment.id]),
+    // Every event, not only the commented ones: the attempt boundaries are the
+    // `submitted` and `-> in_progress` rows, which carry no comment. Same one
+    // query as before — `previousComments` is now filtered out of this list in
+    // TypeScript instead of in the `where` clause.
     supabase
       .from("assignment_events")
       .select("id, comment, created_at, from_status, to_status, actor_id")
       .eq("assignment_id", assignment.id)
-      .not("comment", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(20),
+      .order("created_at", { ascending: true })
+      .limit(300),
     supabase
       .from("assignments")
       .select("id")
@@ -341,6 +351,24 @@ export async function getReviewBundle(
     queueIds.find((id) => id !== assignment.id) ??
     null;
 
+  const actorName = (id: string | null) =>
+    id ? (actorNames.get(id) ?? null) : null;
+
+  const attempts = buildAttempts({
+    assignment,
+    events: eventRows.map((row) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      fromStatus: row.from_status,
+      toStatus: row.to_status,
+      comment: row.comment,
+      actorName: actorName(row.actor_id),
+    })),
+    // Chat images hang off the assignment too, and they belong in the thread,
+    // not in the evidence of a round.
+    attachments: attachments.filter((file) => file.kind !== "chat"),
+  });
+
   return {
     assignment,
     child,
@@ -348,19 +376,20 @@ export async function getReviewBundle(
     topicName: topic.data?.name ?? null,
     taskAttachments: attachments.filter((file) => file.kind === "task_source"),
     solutionAttachments: attachments.filter((file) => file.kind === "solution"),
+    attempts,
     previousComments: eventRows
       .filter((row): row is typeof row & { comment: string } =>
         Boolean(row.comment),
       )
+      .reverse()
+      .slice(0, 20)
       .map((row) => ({
         id: row.id,
         comment: row.comment,
         createdAt: row.created_at,
         fromStatus: row.from_status,
         toStatus: row.to_status,
-        actorName: row.actor_id
-          ? (actorNames.get(row.actor_id) ?? null)
-          : null,
+        actorName: actorName(row.actor_id),
       })),
     queueNextId,
     queueRemaining: queueIds.filter((id) => id !== assignment.id).length,
