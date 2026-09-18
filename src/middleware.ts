@@ -4,6 +4,8 @@ import {
   canAccessPath,
   homePathForRole,
   isAppRole,
+  isHelperInvitePath,
+  isHelperPath,
   isKidPath,
   isParentPath,
   loginPathForPath,
@@ -33,7 +35,12 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const { response, user, supabase } = await updateSession(request);
 
-  const guarded = isKidPath(pathname) || isParentPath(pathname);
+  // `/helper/invite/<token>` is the one helper path an unauthenticated visitor
+  // must reach — that is the whole point of an invitation.
+  const guarded =
+    isKidPath(pathname) ||
+    isParentPath(pathname) ||
+    (isHelperPath(pathname) && !isHelperInvitePath(pathname));
 
   if (!user) {
     if (!guarded) return response;

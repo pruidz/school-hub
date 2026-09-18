@@ -357,6 +357,127 @@ export const ka = {
     goHome: "მთავარ გვერდზე",
   },
 
+  // ------------------------------------------------------------- helpers ---
+  helpers: {
+    // /parent/helpers
+    title: "დამხმარეები",
+    subtitle:
+      "ბებია, რეპეტიტორი ან მეორე მშობელი — ხედავს კონკრეტული ბავშვის დავალებებს, ოჯახს კი არ მართავს",
+    empty: "დამხმარე ჯერ არ დაგიმატებიათ",
+    emptyHint: "მოიწვიეთ ადამიანი, რომელსაც ბავშვის დავალებების ნახვა უნდა შეეძლოს",
+    activeTitle: "აქტიური დამხმარეები",
+    pendingTitle: "გაგზავნილი მოწვევები",
+    pendingEmpty: "მოლოდინში მოწვევა არ არის",
+    removedTitle: "წვდომაშეწყვეტილები",
+    removedEmpty: "წვდომაშეწყვეტილი დამხმარე არ არის",
+    showRemoved: "წვდომაშეწყვეტილების ჩვენება",
+
+    // invite
+    invite: "დამხმარის მოწვევა",
+    inviteTitle: "ახალი დამხმარე",
+    inviteSubtitle: "აირჩიეთ ბავშვი და უფლებები. ბმულს თქვენ გადასცემთ.",
+    email: "email",
+    emailPlaceholder: "mag. bebia@example.com",
+    emailExplain:
+      "ეს მისამართი უნდა დაემთხვეს იმ ანგარიშს, რომლითაც ადამიანი შემოვა.",
+    inviteSend: "მოწვევის შექმნა",
+    inviteCreated: "მოწვევა შეიქმნა — დააკოპირეთ ბმული და გადაუგზავნეთ",
+    noEmailTitle: "წერილს სისტემა არ აგზავნის",
+    noEmailBody:
+      "ბმული ავტომატურად არ იგზავნება. დააკოპირეთ და თქვენ გადაუგზავნეთ — მესენჯერით, SMS-ით ან ზეპირად, როგორც ბავშვის მოწვევის კოდს.",
+    linkLabel: "მოწვევის ბმული",
+    linkCopy: "ბმულის კოპირება",
+    linkCopied: "ბმული დაკოპირდა",
+    expiresAt: "ვადა: {date}",
+    expired: "ვადა გასულია",
+    pendingBadge: "მოლოდინში",
+    acceptedAt: "მიღებულია: {date}",
+
+    // children + permissions
+    childrenLabel: "რომელ ბავშვს ხედავს",
+    childrenExplain:
+      "მხოლოდ მონიშნული ბავშვები. დანარჩენ ბავშვებს დამხმარე ვერც დაინახავს და ვერც გაიგებს, რომ არსებობენ.",
+    childrenRequired: "მონიშნეთ მინიმუმ ერთი ბავშვი",
+    childrenCount: "{count} ბავშვი",
+    permissionsLabel: "უფლებები",
+    permView: "ნახვა",
+    permViewExplain:
+      "ხედავს დავალებებს, ფოტოებსა და მიმოწერას. ეს უფლება ყოველთვის აქვს.",
+    permComment: "კომენტარი",
+    permCommentExplain: "შეუძლია დავალების ჩატში მიწეროს ბავშვს.",
+    permReview: "შემოწმება",
+    permReviewExplain:
+      "შეუძლია დავალება მონიშნოს შესრულებულად (✓) ან დააბრუნოს გადასაკეთებლად (↻) — ანუ თქვენს ნაცვლად გადაწყვიტოს, დავალება ჩათვლილია თუ არა. ჩართეთ მხოლოდ მაშინ, თუ ამ ადამიანს ამას ანდობთ.",
+    permReviewOffHint: "სტანდარტულად გამორთულია",
+    permNever: "ვერ შეძლებს",
+    permNeverExplain:
+      "ბავშვების დამატებას ან რედაქტირებას, მოწვევის კოდებს, PIN-ს, ცხრილს, საგნებს, ნიშნებს და სხვა დამხმარეების მართვას.",
+    permSummaryView: "ნახვა",
+    permSummaryComment: "ნახვა + კომენტარი",
+    permSummaryReview: "ნახვა + კომენტარი + შემოწმება",
+    permSummaryReviewOnly: "ნახვა + შემოწმება",
+
+    // edit / revoke
+    editTitle: "დამხმარის უფლებები",
+    save: "შენახვა",
+    saved: "უფლებები განახლდა",
+    revokeInvite: "მოწვევის გაუქმება",
+    revokeInviteConfirm: "გაუქმდეს მოწვევა {email}-ისთვის? ბმული მაშინვე გაუქმდება.",
+    revokedInvite: "მოწვევა გაუქმდა",
+    remove: "წვდომის შეწყვეტა",
+    removeConfirmTitle: "შეწყდეს {name}-ის წვდომა?",
+    removeConfirmBody:
+      "მაშინვე დაკარგავს ბავშვის დავალებებზე წვდომას. მისი უკვე დაწერილი შეტყობინებები რჩება — სხვისი სიტყვები არ იშლება.",
+    removed: "წვდომა შეწყდა",
+    restore: "წვდომის აღდგენა",
+    restored: "წვდომა აღდგა",
+
+    // acceptance (/helper/invite/[token])
+    acceptTitle: "მოწვევა დამხმარედ",
+    acceptIntro: "{family} გიწვევთ, დაეხმაროთ დავალებების თვალყურის დევნებაში.",
+    acceptForChildren: "ბავშვები: {names}",
+    acceptRights: "უფლებები: {rights}",
+    acceptSignedInAs: "შესული ხართ როგორც {email}",
+    accept: "მოწვევის მიღება",
+    accepting: "მიმდინარეობს…",
+    accepted: "მოწვევა მიღებულია",
+    acceptCreateTitle: "შექმენით ანგარიში",
+    acceptCreateBody: "ანგარიში {email} მისამართზე შეიქმნება.",
+    acceptDisplayName: "სახელი",
+    acceptPassword: "პაროლი",
+    acceptPasswordConfirm: "გაიმეორეთ პაროლი",
+    acceptCreate: "ანგარიშის შექმნა და მოწვევის მიღება",
+    acceptHaveAccount: "უკვე გაქვთ ანგარიში ამ მისამართით?",
+    acceptSignIn: "შესვლა",
+    errInviteNotFound: "მოწვევა ვერ მოიძებნა",
+    errInviteExpired: "მოწვევას ვადა გაუვიდა. სთხოვეთ მშობელს ახალი ბმული.",
+    errInviteUsed: "ეს მოწვევა უკვე გამოყენებულია",
+    errInviteRevoked: "მოწვევა გაუქმებულია",
+    errEmailMismatch:
+      "მოწვევა გაგზავნილია {email} მისამართზე, თქვენ კი შესული ხართ სხვა ანგარიშით. გამოდით და შედით სწორი მისამართით.",
+    errAlreadyParent:
+      "ეს ანგარიში უკვე თავისი ოჯახის მშობელია. დამხმარედ სხვა email-ით დარეგისტრირდით.",
+    errChildAccount: "ბავშვის ანგარიშით მოწვევის მიღება არ შეიძლება",
+    errEmailTaken:
+      "ამ მისამართზე ანგარიში უკვე არსებობს — შედით და ისევ გახსენით ეს ბმული.",
+    errNoChildren: "მოწვევაში ბავშვი მითითებული არ არის",
+
+    // the helper's own area
+    homeTitle: "დავალებები",
+    homeSubtitle: "თქვენთვის მინდობილი ბავშვები",
+    homeEmpty: "ჯერ არცერთი ბავშვი არ გაქვთ მინდობილი",
+    homeEmptyHint: "წვდომა მშობელმა უნდა მოგცეთ",
+    queueTitle: "შესამოწმებელი",
+    queueEmpty: "შესამოწმებელი არაფერია",
+    recentTitle: "ბოლო დავალებები",
+    viewOnly: "მხოლოდ ნახვა",
+    viewOnlyExplain: "შემოწმების უფლება არ გაქვთ — გადაწყვეტილებას მშობელი იღებს.",
+    commentOffExplain: "ჩატში წერის უფლება არ გაქვთ.",
+    backToChildren: "ბავშვებზე დაბრუნება",
+    signedInAsHelper: "დამხმარე",
+    errUnauthorized: "ამ მოქმედების უფლება არ გაქვთ",
+  },
+
   // --------------------------------------------------------------- inbox ---
   inbox: {
     title: "შესამოწმებელი",
@@ -488,6 +609,10 @@ export const ka = {
     errEmpty: "შეტყობინება ცარიელია",
     errSendFailed: "შეტყობინება ვერ გაიგზავნა",
     errTooLong: "შეტყობინება ძალიან გრძელია",
+
+    // phase 2 — realtime
+    dismissFailed: "მოცილება",
+    liveOffline: "კავშირი შეწყვეტილია — განახლდება ავტომატურად",
   },
 
   // ----------------------------------------------------------------- nav ---
@@ -510,6 +635,23 @@ export const ka = {
     closeMenu: "მენიუს დახურვა",
     mainNavigation: "მთავარი ნავიგაცია",
     userMenu: "მომხმარებლის მენიუ",
+  },
+
+  // phase 2 — the in-app notification bell
+  notifications: {
+    title: "შეტყობინებები",
+    bell: "შეტყობინებები",
+    bellWithCount: "შეტყობინებები, {count} წაუკითხავი",
+    markAllRead: "ყველა წაკითხულად",
+    empty: "შეტყობინება არ არის",
+    emptyHint: "აქ გამოჩნდება ჩაბარებები, შემოწმებები და ახალი წერილები",
+    ago: "{time} წინ",
+
+    submittedTitle: "{child}-მა დავალება ჩააბარა",
+    approvedTitle: "დავალება მიღებულია",
+    redoTitle: "დავალება გადასაკეთებელია",
+    messageTitle: "ახალი შეტყობინება — {author}",
+    messagesTitle: "{count} ახალი შეტყობინება",
   },
 
   // -------------------------------------------------------------- parent ---

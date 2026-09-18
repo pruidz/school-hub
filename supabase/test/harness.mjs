@@ -2,7 +2,7 @@
 // SCHOOL-HUB — supabase/test/harness.mjs
 //
 // Boots a throwaway PostgreSQL 18 (embedded-postgres, no Docker), applies
-// supabase/test/bootstrap.sql, then migrations 0001..0007 in order, then
+// supabase/test/bootstrap.sql, then migrations 0001..0010 in order, then
 // seed.sql, then a small second-family fixture that the seed does not provide.
 //
 // Everything here is test infrastructure. Nothing in this file is shipped.
@@ -64,6 +64,38 @@ export const ID = {
   cMessage: 'd3000000-0000-4000-8000-000000000001',
   cAttachment: 'a3000000-0000-4000-8000-000000000001',
   cGrade: 'e3000000-0000-4000-8000-000000000001',
+
+  // --- the helper persona (0010), built inside family 2 ---------------------
+  // Deliberately NOT family 1: test 14 asserts that parent 1 sees exactly three
+  // profiles and three memberships, and three extra adults there would turn a
+  // meaningful assertion into a number nobody maintains.
+  //
+  // Family 2 therefore has two children, C and D, and three helpers, all three
+  // assigned to child C and none of them to child D:
+  //   helperViewUser     view + comment, no review
+  //   helperReviewUser   view + comment + review
+  //   helperRevokedUser  the same grant, with permissions.revoked_at stamped
+  childD: 'c0000000-0000-4000-8000-000000000004',
+  childDUser: 'b0000000-0000-4000-8000-000000000006',
+  dSubject: '54000000-0000-4000-8000-000000000001',
+  dLesson: '84000000-0000-4000-8000-000000000001',
+  dAssignment: '94000000-0000-4000-8000-000000000001',
+  dMessage: 'd4000000-0000-4000-8000-000000000001',
+  dAttachment: 'a4000000-0000-4000-8000-000000000001',
+  dGrade: 'e4000000-0000-4000-8000-000000000001',
+
+  helperViewUser: 'b0000000-0000-4000-8000-000000000003',
+  helperReviewUser: 'b0000000-0000-4000-8000-000000000004',
+  helperRevokedUser: 'b0000000-0000-4000-8000-000000000005',
+
+  // A message the viewing helper already posted on child C's thread. Revoking
+  // them must not remove it.
+  helperMessage: 'd5000000-0000-4000-8000-000000000001',
+
+  // Pending invitations, one per family, so the cross-family walks have a row
+  // to find in family 1 and a row to fail to find in family 2.
+  invite1: '70000000-0000-4000-8000-000000000001',
+  invite2: '70000000-0000-4000-8000-000000000002',
 };
 
 // -----------------------------------------------------------------------------
@@ -156,8 +188,121 @@ insert into storage.objects (bucket_id, name, owner, metadata) values
   ('evidence', '${ID.childB}/${ID.bAssigned}/seed-b.webp', '${ID.childBUser}',
    '{"mimetype":"image/webp","size":1234}'::jsonb),
   ('evidence', '${ID.childB}/lesson/${ID.aLesson}/seed-b-lesson.webp', '${ID.childBUser}',
+   '{"mimetype":"image/webp","size":1234}'::jsonb),
+  ('evidence', '${ID.childC}/${ID.cAssignment}/seed-c.webp', '${ID.childCUser}',
+   '{"mimetype":"image/webp","size":1234}'::jsonb),
+  ('evidence', '${ID.childD}/${ID.dAssignment}/seed-d.webp', '${ID.childDUser}',
    '{"mimetype":"image/webp","size":1234}'::jsonb)
 on conflict (bucket_id, name) do nothing;
+`;
+
+// -----------------------------------------------------------------------------
+// The helper persona (migration 0010). Kept in its own fixture so the block
+// above stays exactly what it was before the helper role existed.
+//
+// Second child in family 2 + three helpers, all assigned to child C only.
+// -----------------------------------------------------------------------------
+const HELPER_FIXTURE_SQL = `
+delete from auth.users where id in (
+  '${ID.childDUser}', '${ID.helperViewUser}',
+  '${ID.helperReviewUser}', '${ID.helperRevokedUser}');
+delete from public.helper_invitations where id in ('${ID.invite1}', '${ID.invite2}');
+
+insert into auth.users (
+  instance_id, id, aud, role, email, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+) values
+  ('00000000-0000-0000-0000-000000000000', '${ID.childDUser}',
+   'authenticated', 'authenticated', 'childd@school-hub.test', now(),
+   '{"provider":"email","providers":["email"],"role":"child"}'::jsonb,
+   '{"role":"child","display_name":"Second Child"}'::jsonb,
+   now(), now(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', '${ID.helperViewUser}',
+   'authenticated', 'authenticated', 'helper-view@school-hub.test', now(),
+   '{"provider":"email","providers":["email"],"role":"helper"}'::jsonb,
+   '{"role":"helper","display_name":"Viewing Helper"}'::jsonb,
+   now(), now(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', '${ID.helperReviewUser}',
+   'authenticated', 'authenticated', 'helper-review@school-hub.test', now(),
+   '{"provider":"email","providers":["email"],"role":"helper"}'::jsonb,
+   '{"role":"helper","display_name":"Reviewing Helper"}'::jsonb,
+   now(), now(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', '${ID.helperRevokedUser}',
+   'authenticated', 'authenticated', 'helper-revoked@school-hub.test', now(),
+   '{"provider":"email","providers":["email"],"role":"helper"}'::jsonb,
+   '{"role":"helper","display_name":"Revoked Helper"}'::jsonb,
+   now(), now(), '', '', '', '');
+
+insert into public.children (id, family_id, profile_id, name, grade, color,
+                             is_active, ui_mode, show_own_stats,
+                             invite_code, pin_hash)
+values ('${ID.childD}', '${ID.family2}', '${ID.childDUser}',
+        'Second Child', 3, '#b45309', true, 'full', false,
+        'QQ7XZ4', 'not-a-real-hash');
+
+update public.children
+   set invite_code = 'RR8YW5', pin_hash = 'not-a-real-hash-either'
+ where id = '${ID.childC}';
+
+insert into public.subjects (id, child_id, name, color, sort_order)
+values ('${ID.dSubject}', '${ID.childD}', 'Second subject', '#b45309', 0);
+
+insert into public.schedule_slots (child_id, subject_id, weekday, start_time, end_time)
+values ('${ID.childD}', '${ID.dSubject}', 2, '10:00', '10:45');
+
+insert into public.lessons (id, child_id, subject_id, date, topic, created_by)
+values ('${ID.dLesson}', '${ID.childD}', '${ID.dSubject}', current_date,
+        'Second lesson', '${ID.parent2User}');
+
+insert into public.assignments (id, lesson_id, child_id, subject_id,
+                                title, source_ref, due_date, status, priority, created_by)
+values ('${ID.dAssignment}', '${ID.dLesson}', '${ID.childD}', '${ID.dSubject}',
+        'Second assignment', 'Other book p.2', current_date,
+        'submitted', 2, '${ID.parent2User}');
+
+insert into public.messages (id, assignment_id, child_id, author_id, body)
+values ('${ID.dMessage}', '${ID.dAssignment}', '${ID.childD}',
+        '${ID.parent2User}', 'second child message');
+
+insert into public.attachments (id, assignment_id, child_id, kind, storage_path,
+                                mime, uploaded_by)
+values ('${ID.dAttachment}', '${ID.dAssignment}', '${ID.childD}', 'solution',
+        '${ID.childD}/${ID.dAssignment}/seed-d.webp', 'image/webp', '${ID.childDUser}');
+
+insert into public.grades (id, child_id, subject_id, date, value, max_value, source)
+values ('${ID.dGrade}', '${ID.childD}', '${ID.dSubject}', current_date, 9, 10, 'teacher');
+
+insert into public.family_members (family_id, user_id, role, permissions) values
+  ('${ID.family2}', '${ID.childDUser}', 'child', '{}'::jsonb),
+  ('${ID.family2}', '${ID.helperViewUser}', 'helper',
+   jsonb_build_object('children', jsonb_build_array('${ID.childC}'),
+                      'can_comment', true, 'can_review', false)),
+  ('${ID.family2}', '${ID.helperReviewUser}', 'helper',
+   jsonb_build_object('children', jsonb_build_array('${ID.childC}'),
+                      'can_comment', true, 'can_review', true)),
+  ('${ID.family2}', '${ID.helperRevokedUser}', 'helper',
+   jsonb_build_object('children', jsonb_build_array('${ID.childC}'),
+                      'can_comment', true, 'can_review', true,
+                      'revoked_at', now()));
+
+-- A message the viewing helper posted while they still had access.
+insert into public.messages (id, assignment_id, child_id, author_id, body)
+values ('${ID.helperMessage}', '${ID.cAssignment}', '${ID.childC}',
+        '${ID.helperViewUser}', 'helper said this before being removed');
+
+insert into public.helper_invitations
+  (id, family_id, email, token, child_ids, can_comment, can_review,
+   invited_by, expires_at)
+values
+  -- names child B on purpose: it makes the "child A sees zero sibling rows"
+  -- walk over helper_invitations a real denial rather than a vacuous one.
+  ('${ID.invite1}', '${ID.family1}', 'grandma@school-hub.test',
+   'INVITE1TOKEN0000000000000000AAAA', array['${ID.childB}']::uuid[],
+   true, false, '${ID.parent1User}', now() + interval '7 days'),
+  ('${ID.invite2}', '${ID.family2}', 'tutor@school-hub.test',
+   'INVITE2TOKEN0000000000000000BBBB', array['${ID.childC}']::uuid[],
+   true, true, '${ID.parent2User}', now() + interval '7 days');
 `;
 
 // -----------------------------------------------------------------------------
@@ -182,6 +327,7 @@ export const PUBLIC_TABLES = [
   'grades',
   'topic_mastery',
   'notifications',
+  'helper_invitations',
 ];
 
 /**
@@ -214,6 +360,9 @@ export const OTHER_CHILD_PREDICATE = {
   grades: `child_id = '${ID.childB}'`,
   topic_mastery: `child_id = '${ID.childB}'`,
   notifications: `user_id = '${ID.parent1User}'`,
+  // Not per-child either: an invitation belongs to the family. "Belongs to the
+  // sibling" is therefore the invitation that names child B among its children.
+  helper_invitations: `child_ids @> array['${ID.childB}']::uuid[]`,
 };
 
 export const FAMILY2_PREDICATE = {
@@ -233,6 +382,7 @@ export const FAMILY2_PREDICATE = {
   grades: `child_id = '${ID.childC}'`,
   topic_mastery: `child_id = '${ID.childC}'`,
   notifications: `user_id = '${ID.parent2User}'`,
+  helper_invitations: `family_id = '${ID.family2}'`,
 };
 
 export const FAMILY1_PREDICATE = {
@@ -252,6 +402,7 @@ export const FAMILY1_PREDICATE = {
   grades: `child_id in ('${ID.childA}', '${ID.childB}')`,
   topic_mastery: `child_id in ('${ID.childA}', '${ID.childB}')`,
   notifications: `user_id = '${ID.parent1User}'`,
+  helper_invitations: `family_id = '${ID.family1}'`,
 };
 
 // =============================================================================
@@ -351,6 +502,9 @@ export async function startDatabase({ log = () => {} } = {}) {
 
   await admin.query(FIXTURE_SQL);
   log('  applied test fixtures (second family + storage objects)');
+
+  await admin.query(HELPER_FIXTURE_SQL);
+  log('  applied helper fixtures (second child in family 2 + three helpers)');
 
   return {
     admin,

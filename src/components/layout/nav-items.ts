@@ -9,6 +9,7 @@ import {
   Sun,
   TrendingUp,
   User,
+  UserPlus,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -31,6 +32,7 @@ export const parentNavItems: NavItem[] = [
   { href: "/parent", label: ka.nav.dashboard, icon: LayoutDashboard, exact: true },
   { href: "/parent/inbox", label: ka.nav.inbox, icon: Inbox },
   { href: "/parent/children", label: ka.nav.children, icon: Users },
+  { href: "/parent/helpers", label: ka.helpers.title, icon: UserPlus },
   { href: "/parent/schedule", label: ka.nav.schedule, icon: CalendarDays },
   { href: "/parent/subjects", label: ka.nav.subjects, icon: BookOpen },
   { href: "/parent/reports", label: ka.nav.reports, icon: TrendingUp },

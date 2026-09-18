@@ -18,6 +18,8 @@ import { ka } from "@/lib/i18n/ka";
 
 import { ChildSwitcher, type SwitchableChild } from "./child-switcher";
 import { isActivePath, parentNavItems } from "./nav-items";
+import { NotificationBell } from "@/features/notifications";
+
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
@@ -108,6 +110,7 @@ export function ParentShell({
           <ChildSwitcher items={childList} activeChildId={activeChildId} />
 
           <div className="ms-auto flex items-center gap-1">
+            <NotificationBell />
             <ThemeToggle />
             <UserMenu
               displayName={displayName}

@@ -15,11 +15,15 @@ import { z } from "zod";
 import { loadAssignment, requireCaller } from "@/features/assignments/access";
 import { logDbError, uploadErrorMessage } from "@/features/assignments/errors";
 import { isWellFormedEvidencePath } from "@/features/attachments/paths";
+import { getSignedUrls } from "@/features/attachments/signed-urls";
 import { removeObjects, statObject } from "@/features/attachments/storage";
 import { fail, ok, type ActionResult } from "@/lib/auth/result";
 import { ka } from "@/lib/i18n/ka";
 import { MAX_UPLOAD_BYTES, isAllowedImageMime } from "@/lib/images";
 import { createClient } from "@/lib/supabase/server";
+
+import { getAssignmentThread } from "./queries";
+import type { ThreadSlice } from "./types";
 
 const MAX_BODY_LENGTH = 4000;
 const MAX_IMAGES_PER_MESSAGE = 4;
@@ -116,6 +120,45 @@ export async function sendMessageAction(
 
   revalidateThread(assignment.id);
   return ok({ messageId: message.id });
+}
+
+const sliceSchema = z.object({
+  assignmentId: z.uuid(),
+  since: z.iso.datetime({ offset: true }).nullable(),
+});
+
+/**
+ * The tail of a thread, with every attachment signed. What the realtime hook
+ * calls on every insert and on every reconnect.
+ *
+ * Returns `null` rather than an empty slice when the caller may not read the
+ * thread, so the browser can tell "nothing new" from "you lost access" and keep
+ * what it already has on screen instead of blanking it.
+ *
+ * Authorisation is the same two layers as every other read here: RLS scopes
+ * `getAssignmentThread`, and nothing in the returned slice depends on the
+ * `since` argument being honest — a caller who lies about it gets more of their
+ * own thread, never anybody else's.
+ */
+export async function getThreadSliceAction(
+  assignmentId: string,
+  since: string | null,
+): Promise<ThreadSlice | null> {
+  const parsed = sliceSchema.safeParse({ assignmentId, since });
+  if (!parsed.success) return null;
+
+  const thread = await getAssignmentThread(
+    parsed.data.assignmentId,
+    parsed.data.since,
+  );
+  if (!thread) return null;
+
+  const paths = thread.messages.flatMap((message) => [
+    ...message.attachments.map((file) => file.storage_path),
+    ...(message.voicePath ? [message.voicePath] : []),
+  ]);
+
+  return { ...thread, urls: await getSignedUrls(paths) };
 }
 
 const readSchema = z.object({ assignmentId: z.uuid() });

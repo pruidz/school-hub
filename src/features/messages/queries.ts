@@ -1,8 +1,12 @@
 import "server-only";
 
 /**
- * Per-assignment message threads. Plain request/response — no realtime in this
- * phase (CLAUDE.md, "Not in scope for phase 1").
+ * Per-assignment message threads.
+ *
+ * Phase 2 made the thread live, but the reads did not move to the browser: the
+ * realtime socket is only a signal. Every row the UI renders still comes from
+ * here, through the user-scoped client, so RLS remains the single arbiter of
+ * who sees what — see `getThreadSlice` and `src/lib/realtime/`.
  *
  * "Unread" is derived, not stored on the message: a message counts as unread
  * when it was written by somebody else and the caller has no `message_reads`
@@ -13,24 +17,9 @@ import { getSessionUser } from "@/lib/auth/session";
 import type { Attachment } from "@/lib/db.types";
 import { createClient, type ServerClient } from "@/lib/supabase/server";
 
-export type ThreadMessage = {
-  id: string;
-  body: string | null;
-  voicePath: string | null;
-  createdAt: string;
-  authorId: string | null;
-  authorName: string | null;
-  isMine: boolean;
-  isUnread: boolean;
-  attachments: Attachment[];
-};
+import type { Thread, ThreadMessage } from "./types";
 
-export type Thread = {
-  assignmentId: string;
-  messages: ThreadMessage[];
-  unreadCount: number;
-  viewerId: string;
-};
+export type { Thread, ThreadMessage } from "./types";
 
 async function loadAuthorNames(
   supabase: ServerClient,
@@ -50,12 +39,21 @@ async function loadAuthorNames(
   return names;
 }
 
+/** How many messages one thread read will ever return. */
+const THREAD_PAGE_SIZE = 500;
+
 /**
  * Whole thread for one assignment. Returns `null` when the assignment is not
  * visible to the caller — RLS on `assignments` decides that, not this code.
+ *
+ * `since` (an ISO timestamp) narrows the read to the tail of the thread. It is
+ * INCLUSIVE, because two messages can share a `created_at` to the microsecond;
+ * the caller de-duplicates by id, which is cheaper than being clever here and
+ * cannot drop a message.
  */
 export async function getAssignmentThread(
   assignmentId: string,
+  since?: string | null,
 ): Promise<Thread | null> {
   const user = await getSessionUser();
   if (!user) return null;
@@ -69,12 +67,16 @@ export async function getAssignmentThread(
     .maybeSingle();
   if (!assignment) return null;
 
-  const { data: rows } = await supabase
+  let query = supabase
     .from("messages")
     .select("id, body, voice_path, created_at, author_id")
-    .eq("assignment_id", assignmentId)
+    .eq("assignment_id", assignmentId);
+
+  if (since) query = query.gte("created_at", since);
+
+  const { data: rows } = await query
     .order("created_at", { ascending: true })
-    .limit(500);
+    .limit(THREAD_PAGE_SIZE);
 
   const messages = rows ?? [];
   const messageIds = messages.map((row) => row.id);
@@ -127,6 +129,9 @@ export async function getAssignmentThread(
   return {
     assignmentId,
     messages: thread,
+    // Unread *within what was read*. Identical to the thread total for a full
+    // read; for a `since` tail it is the tail's unread count, which is all the
+    // live thread ever asks about.
     unreadCount: thread.filter((message) => message.isUnread).length,
     viewerId: user.id,
   };

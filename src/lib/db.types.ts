@@ -993,10 +993,98 @@ export interface Database {
           },
         ]
       }
+      helper_invitations: {
+        Row: {
+          id: string
+          family_id: string
+          email: string
+          token: string
+          child_ids: string[]
+          can_comment: boolean
+          can_review: boolean
+          invited_by: string
+          expires_at: string
+          accepted_at: string | null
+          accepted_by: string | null
+          revoked_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          family_id: string
+          email: string
+          token: string
+          child_ids: string[]
+          can_comment?: boolean
+          can_review?: boolean
+          invited_by: string
+          expires_at: string
+          accepted_at?: string | null
+          accepted_by?: string | null
+          revoked_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          family_id?: string
+          email?: string
+          token?: string
+          child_ids?: string[]
+          can_comment?: boolean
+          can_review?: boolean
+          invited_by?: string
+          expires_at?: string
+          accepted_at?: string | null
+          accepted_by?: string | null
+          revoked_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'helper_invitations_family_id_fkey'
+            columns: ['family_id']
+            isOneToOne: false
+            referencedRelation: 'families'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'helper_invitations_invited_by_fkey'
+            columns: ['invited_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'helper_invitations_accepted_by_fkey'
+            columns: ['accepted_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
 
     Views: {
-      [_ in never]: never
+      /** Child columns a helper may see. Never exposes invite_code, pin_hash,
+       *  pin_attempts, pin_locked_until, ui_mode or show_own_stats. */
+      helper_children: {
+        Row: {
+          id: string
+          family_id: string
+          name: string
+          grade: number | null
+          school: string | null
+          birth_date: string | null
+          avatar_url: string | null
+          color: string
+          is_active: boolean
+        }
+        Relationships: []
+      }
     }
 
     Functions: {

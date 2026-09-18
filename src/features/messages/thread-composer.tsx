@@ -7,6 +7,17 @@
  * PUT straight to Storage, then hand the paths to `sendMessageAction`, which
  * re-verifies them before writing any row. If the send fails, the objects are
  * removed by the action, so nothing is left dangling.
+ *
+ * Two modes, decided by whether the parent passed the optimistic callbacks:
+ *
+ *   live  (`onSendStart` given) — the composer clears the moment the action is
+ *         dispatched and the message is already on screen, owned by
+ *         `useRealtimeMessages`. No `router.refresh()`: the real row arrives
+ *         over the socket (or over the settle-triggered refetch) and quietly
+ *         replaces the local copy.
+ *   plain (no callbacks) — the pre-phase-2 behaviour, unchanged: wait for the
+ *         action, then refresh the route. Anything embedding the composer on
+ *         its own still works.
  */
 
 import * as React from "react";
@@ -36,15 +47,31 @@ type Pending = {
   failed: boolean;
 };
 
+export type ThreadComposerProps = {
+  assignmentId: string;
+  childId: string;
+  className?: string;
+  /**
+   * Put the message on screen before the server has confirmed it. Returns the
+   * local id the two callbacks below refer to. Supplying this switches the
+   * composer into live mode.
+   */
+  onSendStart?: (draft: {
+    body: string | null;
+    previewUrls?: string[];
+  }) => string;
+  onSendSettled?: (localId: string, messageId: string) => void;
+  onSendFailed?: (localId: string) => void;
+};
+
 export function ThreadComposer({
   assignmentId,
   childId,
   className,
-}: {
-  assignmentId: string;
-  childId: string;
-  className?: string;
-}) {
+  onSendStart,
+  onSendSettled,
+  onSendFailed,
+}: ThreadComposerProps) {
   const router = useRouter();
   const [body, setBody] = React.useState("");
   const [pending, setPending] = React.useState<Pending[]>([]);
@@ -124,14 +151,40 @@ export function ThreadComposer({
 
   const send = async () => {
     if (!canSend) return;
+
+    const trimmed = body.trim() || null;
+    const payload = { assignmentId, body: trimmed, imagePaths: ready };
+
+    // ---- live mode: clear first, reconcile later --------------------------
+    if (onSendStart) {
+      const previewUrls = pending
+        .filter((item) => item.storagePath && !item.failed)
+        .map((item) => item.previewUrl);
+
+      const localId = onSendStart({ body: trimmed, previewUrls });
+
+      // The composer empties immediately. The object URLs above stay alive —
+      // `previewsRef` still owns them and only revokes on unmount — so the
+      // optimistic bubble keeps its photos until the signed ones arrive.
+      setBody("");
+      setPending([]);
+      setError(null);
+
+      const result = await sendMessageAction(payload);
+      if (result.ok) {
+        onSendSettled?.(localId, result.data.messageId);
+      } else {
+        onSendFailed?.(localId);
+        setError(result.message);
+      }
+      return;
+    }
+
+    // ---- plain mode: unchanged pre-phase-2 behaviour ----------------------
     setSending(true);
     setError(null);
 
-    const result = await sendMessageAction({
-      assignmentId,
-      body: body.trim() || null,
-      imagePaths: ready,
-    });
+    const result = await sendMessageAction(payload);
 
     setSending(false);
 

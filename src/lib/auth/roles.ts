@@ -18,8 +18,9 @@ export function homePathForRole(role: AppRole | null | undefined): string {
   switch (role) {
     case "child":
       return "/kid";
-    case "parent":
     case "helper":
+      return "/helper";
+    case "parent":
       return "/parent";
     default:
       return "/";
@@ -39,10 +40,27 @@ export function isParentPath(pathname: string): boolean {
   return pathname === "/parent" || pathname.startsWith("/parent/");
 }
 
+export function isHelperPath(pathname: string): boolean {
+  return pathname === "/helper" || pathname.startsWith("/helper/");
+}
+
+/**
+ * The one `/helper/*` screen that must stay reachable signed out: an invited
+ * adult opens it before they have an account, let alone a helper role.
+ */
+export function isHelperInvitePath(pathname: string): boolean {
+  return pathname.startsWith("/helper/invite/");
+}
+
 /** True when `role` is allowed to load `pathname`. */
 export function canAccessPath(role: AppRole, pathname: string): boolean {
   if (isKidPath(pathname)) return role === "child";
-  if (isParentPath(pathname)) return role === "parent" || role === "helper";
+  if (isHelperInvitePath(pathname)) return true;
+  if (isHelperPath(pathname)) return role === "helper";
+  // Helpers used to be admitted here. They are not: every /parent screen is
+  // built on queries a helper cannot run, so they would get a sidebar of links
+  // to blank pages. They have their own area.
+  if (isParentPath(pathname)) return role === "parent";
   return true;
 }
 

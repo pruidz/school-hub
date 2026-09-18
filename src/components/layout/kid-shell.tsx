@@ -7,6 +7,8 @@ import { cn } from "cn";
 
 import { ka } from "@/lib/i18n/ka";
 
+import { NotificationBell } from "@/features/notifications";
+
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 import { isActivePath, kidNavItems } from "./nav-items";
@@ -32,6 +34,7 @@ export function KidShell({
       <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background px-4">
         <span className="truncate text-lg font-semibold">{displayName}</span>
         <div className="ms-auto flex items-center gap-1">
+          <NotificationBell variant="kid" />
           <ThemeToggle />
           <UserMenu
             displayName={displayName}
