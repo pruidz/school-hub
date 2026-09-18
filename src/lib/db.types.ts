@@ -966,6 +966,8 @@ export interface Database {
           payload: Json
           read_at: string | null
           created_at: string
+          /** 0014: when the row was handed to the push services. Set once. */
+          pushed_at: string | null
         }
         Insert: {
           id?: string
@@ -974,6 +976,7 @@ export interface Database {
           payload?: Json
           read_at?: string | null
           created_at?: string
+          pushed_at?: string | null
         }
         Update: {
           id?: string
@@ -982,10 +985,57 @@ export interface Database {
           payload?: Json
           read_at?: string | null
           created_at?: string
+          pushed_at?: string | null
         }
         Relationships: [
           {
             foreignKeyName: 'notifications_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* 0014_push_subscriptions.sql                                         */
+      /* `auth_key` is the browser's `auth` key, renamed in the schema to    */
+      /* keep a column called `auth` out of policies that call auth.uid().   */
+      push_subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth_key: string
+          user_agent: string | null
+          created_at: string
+          last_seen_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth_key: string
+          user_agent?: string | null
+          created_at?: string
+          last_seen_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          endpoint?: string
+          p256dh?: string
+          auth_key?: string
+          user_agent?: string | null
+          created_at?: string
+          last_seen_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'push_subscriptions_user_id_fkey'
             columns: ['user_id']
             isOneToOne: false
             referencedRelation: 'profiles'
@@ -1205,6 +1255,10 @@ export type Attachment = Database['public']['Tables']['attachments']['Row']
 export type Grade = Database['public']['Tables']['grades']['Row']
 export type TopicMastery = Database['public']['Tables']['topic_mastery']['Row']
 export type Notification = Database['public']['Tables']['notifications']['Row']
+export type PushSubscriptionRow =
+  Database['public']['Tables']['push_subscriptions']['Row']
+export type PushSubscriptionInsert =
+  Database['public']['Tables']['push_subscriptions']['Insert']
 
 export type ProfileInsert = Database['public']['Tables']['profiles']['Insert']
 export type ChildInsert = Database['public']['Tables']['children']['Insert']

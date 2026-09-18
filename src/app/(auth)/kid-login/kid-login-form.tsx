@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, X } from "lucide-react";
+import { ArrowLeft, Loader2, UserPlus, X } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -43,10 +43,16 @@ export function KidLoginForm() {
     getDeviceChildrenServerSnapshot,
   );
 
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [chosenId, setChosenId] = React.useState<string | null>(null);
   const [pin, setPin] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+
+  // One child on the device is the normal case: go straight to the PIN pad
+  // instead of making them tap their own face first. Derived, not stored, so
+  // it survives the list being refreshed underneath.
+  const onlyChild = children.length === 1 ? children[0].childId : null;
+  const selectedId = chosenId ?? onlyChild;
 
   const selected = children.find((child) => child.childId === selectedId);
 
@@ -151,65 +157,88 @@ export function KidLoginForm() {
           {ka.auth.signIn}
         </Button>
 
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full"
-          disabled={pending}
-          onClick={() => {
-            setSelectedId(null);
-            setPin("");
-            setError(null);
-          }}
-        >
-          <ArrowLeft />
-          {ka.auth.kidBackToList}
-        </Button>
+        {children.length > 1 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            disabled={pending}
+            onClick={() => {
+              setChosenId(null);
+              setPin("");
+              setError(null);
+            }}
+          >
+            <ArrowLeft />
+            {ka.auth.kidBackToList}
+          </Button>
+        ) : (
+          <Button asChild variant="ghost" className="w-full">
+            <Link href="/join">{ka.auth.kidAddDevice}</Link>
+          </Button>
+        )}
       </form>
+    );
+  }
+
+  // Nothing remembered: storage was cleared, or this is a new device. Say what
+  // to do about it — the child cannot get a code without a parent.
+  if (children.length === 0) {
+    return (
+      <div className="grid gap-4 text-center">
+        <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-muted">
+          <UserPlus className="size-7 text-muted-foreground" />
+        </div>
+
+        <div className="grid gap-1">
+          <p className="text-base font-semibold">{ka.auth.kidNoDevicesTitle}</p>
+          <p className="text-sm text-muted-foreground">
+            {ka.auth.kidNoDevicesHelp}
+          </p>
+        </div>
+
+        <Button asChild size="lg" className="h-14 w-full text-base">
+          <Link href="/join">{ka.auth.kidNoDevicesAction}</Link>
+        </Button>
+      </div>
     );
   }
 
   return (
     <div className="grid gap-4">
-      {children.length === 0 ? (
-        <p className="text-center text-sm text-muted-foreground">
-          {ka.auth.kidNoDevices}
-        </p>
-      ) : (
-        <ul className="grid gap-3">
-          {children.map((child) => (
-            <li key={child.childId} className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-16 flex-1 justify-start gap-3 text-base"
-                onClick={() => {
-                  setSelectedId(child.childId);
-                  setError(null);
-                }}
-              >
-                <Avatar className="size-10">
-                  {child.avatarUrl ? (
-                    <AvatarImage src={child.avatarUrl} alt="" />
-                  ) : null}
-                  <AvatarFallback>{initials(child.name)}</AvatarFallback>
-                </Avatar>
-                {child.name}
-              </Button>
+      <ul className="grid gap-3">
+        {children.map((child) => (
+          <li key={child.childId} className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-16 flex-1 justify-start gap-3 text-base"
+              onClick={() => {
+                setChosenId(child.childId);
+                setError(null);
+              }}
+            >
+              <Avatar className="size-10">
+                {child.avatarUrl ? (
+                  <AvatarImage src={child.avatarUrl} alt="" />
+                ) : null}
+                <AvatarFallback>{initials(child.name)}</AvatarFallback>
+              </Avatar>
+              {child.name}
+            </Button>
 
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-lg"
-                aria-label={`${ka.auth.kidRemoveDevice}: ${child.name}`}
-                onClick={() => forgetDeviceChild(child.childId)}
-              >
-                <X />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              aria-label={`${ka.auth.kidRemoveDevice}: ${child.name}`}
+              onClick={() => forgetDeviceChild(child.childId)}
+            >
+              <X />
+            </Button>
+          </li>
+        ))}
+      </ul>
 
       <Button asChild variant="secondary" className="h-12 w-full text-base">
         <Link href="/join">{ka.auth.kidAddDevice}</Link>

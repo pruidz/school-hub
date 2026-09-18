@@ -1,10 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192" role="img" aria-label="SCHOOL-HUB">
-  <rect width="192" height="192" rx="42" ry="42" fill="#4f46e5" />
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5b51ea" />
+      <stop offset="1" stop-color="#3f35c4" />
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="42.2" ry="42.2" fill="url(#tile)" />
   <path
-    d="M56 100 L84 128 L140 66"
+    d="M 71.59 48.69 L 71.59 118.90 A 24.41 24.41 0 0 0 120.41 118.90 L 120.41 89.55 A 5.38 5.38 0 0 0 109.66 89.55"
     fill="none"
     stroke="#ffffff"
-    stroke-width="18"
+    stroke-width="12.90"
     stroke-linecap="round"
     stroke-linejoin="round"
   />

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
 
+import { DeviceMemory } from "@/components/install/device-memory";
+import { InstallHint } from "@/components/install/install-hint";
 import { ka } from "@/lib/i18n/ka";
 
 import { NotificationBell } from "@/features/notifications";
@@ -15,8 +17,13 @@ import { isActivePath, kidNavItems } from "./nav-items";
 
 /**
  * Mobile-first kid chrome: a fixed bottom tab bar with 64px targets, larger
- * type and high-contrast active states. Content gets bottom padding plus the
- * safe-area inset so nothing hides behind the bar on a notched phone.
+ * type and high-contrast active states.
+ *
+ * Installed on a notched iPhone this is the whole window, so every edge is
+ * padded with its safe-area inset: the header grows by the status bar, the tab
+ * bar by the home indicator, and the sides by the notch in landscape. The
+ * install hint sits at the top of the content, where it is read, and is gone
+ * the moment the app is running standalone.
  */
 export function KidShell({
   displayName,
@@ -31,20 +38,25 @@ export function KidShell({
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background px-4">
-        <span className="truncate text-lg font-semibold">{displayName}</span>
-        <div className="ms-auto flex items-center gap-1">
-          <NotificationBell variant="kid" />
-          <ThemeToggle />
-          <UserMenu
-            displayName={displayName}
-            email={null}
-            avatarUrl={avatarUrl}
-          />
+      <DeviceMemory />
+
+      <header className="sticky top-0 z-30 border-b bg-background pt-safe">
+        <div className="px-safe flex h-14 items-center gap-2">
+          <span className="truncate text-lg font-semibold">{displayName}</span>
+          <div className="ms-auto flex items-center gap-1">
+            <NotificationBell variant="kid" />
+            <ThemeToggle />
+            <UserMenu
+              displayName={displayName}
+              email={null}
+              avatarUrl={avatarUrl}
+            />
+          </div>
         </div>
       </header>
 
-      <main className="flex-1 px-4 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] text-base">
+      <main className="px-safe flex-1 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] text-base">
+        <InstallHint className="mb-4" />
         {children}
       </main>
 
@@ -52,7 +64,7 @@ export function KidShell({
         aria-label={ka.nav.mainNavigation}
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[env(safe-area-inset-bottom)]"
       >
-        <ul className="mx-auto flex max-w-lg">
+        <ul className="px-safe mx-auto flex max-w-lg [--px-safe:0px]">
           {kidNavItems.map((item) => {
             const active = isActivePath(pathname, item);
             const Icon = item.icon;

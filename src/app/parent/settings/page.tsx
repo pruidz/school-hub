@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { PushSettingsCard } from "@/features/notifications/push";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -47,6 +48,10 @@ export default async function ParentSettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Push sits directly under the account: it is the one setting on this
+          page that changes whether the product works when nobody is looking. */}
+      <PushSettingsCard variant="parent" />
+
       <Card>
         <CardHeader>
           <CardTitle>{ka.settings.appearanceTitle}</CardTitle>
@@ -75,7 +80,7 @@ export default async function ParentSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>{ka.settings.laterTitle}</CardTitle>
-          <CardDescription>{ka.settings.laterBody}</CardDescription>
+          <CardDescription>{ka.settings.laterBodyV2}</CardDescription>
         </CardHeader>
       </Card>
     </div>

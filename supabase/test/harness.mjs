@@ -97,6 +97,13 @@ export const ID = {
   // to find in family 1 and a row to fail to find in family 2.
   invite1: '70000000-0000-4000-8000-000000000001',
   invite2: '70000000-0000-4000-8000-000000000002',
+
+  // --- push subscriptions (0014) --------------------------------------------
+  // One per persona block 27 needs: the parent whose rows must stay private,
+  // a child in the same family, and a parent in the other family.
+  pushParent1: '75000000-0000-4000-8000-000000000001',
+  pushChildA: '75000000-0000-4000-8000-000000000002',
+  pushParent2: '75000000-0000-4000-8000-000000000003',
 };
 
 // -----------------------------------------------------------------------------
@@ -178,6 +185,21 @@ values ('${ID.parent2User}', 'assignment_submitted',
 
 insert into public.message_reads (message_id, user_id)
 values ('${ID.cMessage}', '${ID.parent2User}');
+
+-- Push subscriptions (0014). One per persona that block 27 needs to be able to
+-- read, fail to read, or fail to delete. The endpoints are fake but have the
+-- shape the app validates: https, dotted public host.
+insert into public.push_subscriptions (id, user_id, endpoint, p256dh, auth_key, user_agent) values
+  ('${ID.pushParent1}', '${ID.parent1User}',
+   'https://fcm.googleapis.test/fcm/send/parent1-endpoint',
+   'p256dh-parent1', 'auth-parent1', 'Mozilla/5.0 (iPhone) Safari'),
+  ('${ID.pushChildA}', '${ID.childAUser}',
+   'https://fcm.googleapis.test/fcm/send/childa-endpoint',
+   'p256dh-childa', 'auth-childa', 'Mozilla/5.0 (Android) Chrome'),
+  ('${ID.pushParent2}', '${ID.parent2User}',
+   'https://updates.push.services.mozilla.test/wpush/v2/parent2-endpoint',
+   'p256dh-parent2', 'auth-parent2', 'Mozilla/5.0 (Windows) Firefox')
+on conflict (endpoint) do nothing;
 
 -- Storage objects for both families, so the storage tests have something to
 -- SELECT as well as something to fail to insert.
@@ -329,6 +351,9 @@ export const PUBLIC_TABLES = [
   'topic_mastery',
   'notifications',
   'helper_invitations',
+  // 0014: one row per browser per user. Per-user, like notifications, with no
+  // family clause anywhere in its policies.
+  'push_subscriptions',
 ];
 
 /**
@@ -361,6 +386,9 @@ export const OTHER_CHILD_PREDICATE = {
   grades: `child_id = '${ID.childB}'`,
   topic_mastery: `child_id = '${ID.childB}'`,
   notifications: `user_id = '${ID.parent1User}'`,
+  // Same reasoning as notifications: a push subscription is per USER, and the
+  // sibling has none. Ask for the parent's, which exist and must stay hidden.
+  push_subscriptions: `user_id = '${ID.parent1User}'`,
   // Not per-child either: an invitation belongs to the family. "Belongs to the
   // sibling" is therefore the invitation that names child B among its children.
   helper_invitations: `child_ids @> array['${ID.childB}']::uuid[]`,
@@ -383,6 +411,7 @@ export const FAMILY2_PREDICATE = {
   grades: `child_id = '${ID.childC}'`,
   topic_mastery: `child_id = '${ID.childC}'`,
   notifications: `user_id = '${ID.parent2User}'`,
+  push_subscriptions: `user_id = '${ID.parent2User}'`,
   helper_invitations: `family_id = '${ID.family2}'`,
 };
 
@@ -403,6 +432,7 @@ export const FAMILY1_PREDICATE = {
   grades: `child_id in ('${ID.childA}', '${ID.childB}')`,
   topic_mastery: `child_id in ('${ID.childA}', '${ID.childB}')`,
   notifications: `user_id = '${ID.parent1User}'`,
+  push_subscriptions: `user_id = '${ID.parent1User}'`,
   helper_invitations: `family_id = '${ID.family1}'`,
 };
 

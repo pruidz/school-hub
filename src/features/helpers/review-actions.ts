@@ -21,6 +21,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { assignmentErrorMessage, logDbError } from "@/features/assignments/errors";
+import { schedulePushForAssignment } from "@/features/notifications/push/deliver";
 import { getHelperScope, type HelperScope } from "@/lib/auth/helper";
 import { fail, ok, type ActionResult } from "@/lib/auth/result";
 import { ka } from "@/lib/i18n/ka";
@@ -124,6 +125,9 @@ export async function helperApproveAction(
   if (!data || data.length === 0) return fail(ka.helpers.errUnauthorized);
 
   revalidateTarget(target.id);
+  // 0011 notifies the child AND the parents when a non-parent decides; those
+  // rows are what this pushes.
+  schedulePushForAssignment(target.id);
   return ok(null);
 }
 
@@ -155,6 +159,7 @@ export async function helperRequestRedoAction(
   if (!data || data.length === 0) return fail(ka.helpers.errUnauthorized);
 
   revalidateTarget(target.id);
+  schedulePushForAssignment(target.id);
   return ok(null);
 }
 
@@ -188,5 +193,6 @@ export async function helperSendMessageAction(
   }
 
   revalidateTarget(target.id);
+  schedulePushForAssignment(target.id);
   return ok(null);
 }

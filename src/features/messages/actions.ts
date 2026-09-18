@@ -15,6 +15,7 @@ import { z } from "zod";
 import { loadAssignment, requireCaller } from "@/features/assignments/access";
 import { logDbError, uploadErrorMessage } from "@/features/assignments/errors";
 import { isWellFormedEvidencePath } from "@/features/attachments/paths";
+import { schedulePushForAssignment } from "@/features/notifications/push/deliver";
 import { getSignedUrls } from "@/features/attachments/signed-urls";
 import { removeObjects, statObject } from "@/features/attachments/storage";
 import { fail, ok, type ActionResult } from "@/lib/auth/result";
@@ -120,6 +121,10 @@ export async function sendMessageAction(
   }
 
   revalidateThread(assignment.id);
+  // The trigger has already collapsed this message into the recipient's one
+  // unread row for the thread; `pushed_at` makes sure the third message of a
+  // burst does not become the third buzz.
+  schedulePushForAssignment(assignment.id);
   return ok({ messageId: message.id });
 }
 

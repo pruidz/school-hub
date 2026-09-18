@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Noto_Sans_Georgian } from "next/font/google";
 
+import { appleLaunchScreens } from "@/components/install/apple-launch-screens";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { ka } from "@/lib/i18n/ka";
@@ -35,17 +36,24 @@ export const metadata: Metadata = {
   description: ka.auth.tagline,
   applicationName: ka.auth.appName,
   manifest: "/manifest.webmanifest",
+  // `statusBarStyle: "default"` keeps the iOS status bar opaque and painted
+  // with `themeColor` below, so it follows light and dark instead of sitting
+  // black-on-black. The launch screens stop the first paint flashing white.
   appleWebApp: {
     capable: true,
     title: ka.pwa.appShortName,
     statusBarStyle: "default",
+    startupImage: appleLaunchScreens,
   },
   icons: {
     icon: [
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/icon-192.png", sizes: "192x192" }],
+    // One opaque 180x180: iOS composites alpha against black, and it scales
+    // this down for every other slot itself.
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
   formatDetection: { telephone: false },
 };

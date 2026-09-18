@@ -4394,3 +4394,432 @@ describe('26. a child may take back evidence only before handing it in (0013)', 
     }),
   );
 });
+
+// =============================================================================
+// 27. Push subscriptions: a device list is personal, not family data (0014)
+//
+// `push_subscriptions` is the second table in the schema whose RLS has no
+// family clause at all, and the reason is sharper than it is for
+// `notifications`. An endpoint is a CAPABILITY: whoever holds it plus the two
+// keys can make that phone light up, at any hour, with any text they like. A
+// parent has no business reading their child's, a helper has no business
+// reading anybody's, and the only correct scope is `user_id = auth.uid()` on
+// every verb.
+//
+// The five questions that matter:
+//   a. can I see my own?                                          yes
+//   b. can I see somebody else's — child, parent, other family?   no
+//   c. can I register a device in somebody else's name?           refused
+//   d. can I delete or hijack somebody else's row?                zero / refused
+//   e. is anon refused rather than merely empty?                  42501
+//
+// Block 13 already walks anon across every table including this one; (e) here
+// is the write side of the same question. The last two tests cover the other
+// half of 0014: the `pushed_at` marker that keeps a collapsed burst to one buzz.
+// =============================================================================
+describe('27. a push subscription belongs to one user and nobody else (0014)', () => {
+  test(
+    'the table exists, has RLS on, and grants anon nothing',
+    tx(async () => {
+      await s.asService();
+      const [table] = await s.rows(
+        `select c.relrowsecurity
+           from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          where n.nspname = 'public' and c.relname = 'push_subscriptions'`,
+      );
+      assert.ok(table, 'proves: migration 0014 created public.push_subscriptions');
+      assert.equal(
+        table.relrowsecurity,
+        true,
+        'proves: RLS is ON — without it the four policies below are decoration',
+      );
+
+      const grants = await s.rows(
+        `select privilege_type
+           from information_schema.role_table_grants
+          where table_schema = 'public'
+            and table_name = 'push_subscriptions'
+            and grantee = 'anon'`,
+      );
+      assert.deepEqual(
+        grants,
+        [],
+        'proves: 0014 revoked the ALL that bootstrap default-privileges hands every new ' +
+          'table, so an unauthenticated request is a privilege failure and not an empty 200. ' +
+          `Leaked: ${JSON.stringify(grants)}`,
+      );
+    }),
+  );
+
+  test(
+    'a user reads their own subscriptions and only those',
+    tx(async () => {
+      await s.asUser(ID.parent1User);
+
+      const mine = await s.rows(
+        `select id, user_id from public.push_subscriptions order by id`,
+      );
+      assert.equal(
+        mine.length,
+        1,
+        'proves: an unqualified select returns exactly the caller own row — three exist in ' +
+          `the fixture (parent 1, child A, parent 2) and the policy hides two. Got ${mine.length}`,
+      );
+      assert.equal(
+        mine[0].user_id,
+        ID.parent1User,
+        'proves: the one row visible is the caller own',
+      );
+    }),
+  );
+
+  test(
+    'a parent cannot read the device their own child registered',
+    tx(async () => {
+      await s.asUser(ID.parent1User);
+      const { rows } = await s.q(
+        `select count(*)::int as n from public.push_subscriptions
+          where user_id = '${ID.childAUser}'`,
+      );
+      assert.equal(
+        rows[0].n,
+        0,
+        'proves: this is NOT family data. The parent reads every assignment, message and ' +
+          'photo of this child and still cannot read the endpoint that would let them push ' +
+          'arbitrary text to the phone. The fence is per user, deliberately tighter than ' +
+          'every other table in the schema.',
+      );
+    }),
+  );
+
+  test(
+    'a child cannot read a parent, or anyone in another family',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+
+      for (const [who, userId] of [
+        ['their own parent', ID.parent1User],
+        ['a parent of another family', ID.parent2User],
+      ]) {
+        const { rows } = await s.q(
+          `select count(*)::int as n from public.push_subscriptions where user_id = $1`,
+          [userId],
+        );
+        assert.equal(
+          rows[0].n,
+          0,
+          `proves: child A sees no subscription belonging to ${who}`,
+        );
+      }
+
+      const { rows: own } = await s.q(
+        `select count(*)::int as n from public.push_subscriptions
+          where user_id = '${ID.childAUser}'`,
+      );
+      assert.ok(
+        own[0].n > 0,
+        'proves: child A really can read their OWN row, so the two zeroes above are a ' +
+          'denial and not an empty table',
+      );
+    }),
+  );
+
+  test(
+    'a helper sees nothing, not even for the child they were given',
+    tx(async () => {
+      await s.asUser(ID.helperViewUser);
+      const { rows } = await s.q(
+        `select count(*)::int as n from public.push_subscriptions`,
+      );
+      assert.equal(
+        rows[0].n,
+        0,
+        'proves: a helper with full view+comment rights over child C reads zero rows here. ' +
+          '0010 widened several tables for helpers; this one was not among them and must ' +
+          'not be widened later by accident.',
+      );
+    }),
+  );
+
+  test(
+    'a user cannot register a device in somebody else name',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+
+      const error = await s.expectError(
+        `insert into public.push_subscriptions (user_id, endpoint, p256dh, auth_key)
+         values ('${ID.parent1User}',
+                 'https://fcm.googleapis.test/fcm/send/forged', 'k', 'a')`,
+      );
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: push_subscriptions_own_insert pins user_id to auth.uid() in its WITH CHECK, ' +
+          'so a child cannot point their parent notifications at a device they hold. ' +
+          `Got ${error.code}: ${error.message}`,
+      );
+    }),
+  );
+
+  test(
+    'a user CAN register a device in their own name, so the refusal above is the policy',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const { rowCount } = await s.q(
+        `insert into public.push_subscriptions (user_id, endpoint, p256dh, auth_key)
+         values ('${ID.childAUser}',
+                 'https://fcm.googleapis.test/fcm/send/childa-second', 'k', 'a')`,
+      );
+      assert.equal(
+        rowCount,
+        1,
+        'proves: the insert path works for the caller own user_id — the test above is a ' +
+          'fence, not a broken statement',
+      );
+    }),
+  );
+
+  test(
+    'a user cannot delete somebody else device',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+
+      const { rowCount } = await s.q(
+        `delete from public.push_subscriptions where id = '${ID.pushParent1}'`,
+      );
+      assert.equal(
+        rowCount,
+        0,
+        'proves: the parent row is not visible to the DELETE at all — a child cannot ' +
+          'silence their parent phone',
+      );
+
+      await s.asService();
+      const { rows } = await s.q(
+        `select count(*)::int as n from public.push_subscriptions
+          where id = '${ID.pushParent1}'`,
+      );
+      assert.equal(
+        rows[0].n,
+        1,
+        'proves: the row really is still there — the zero above is RLS, not a missing row',
+      );
+    }),
+  );
+
+  test(
+    'a user cannot hand their own device to another account, or steal one',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+
+      // USING passes (the row is mine) but WITH CHECK must reject the new owner.
+      const error = await s.expectError(
+        `update public.push_subscriptions set user_id = '${ID.parent1User}'
+          where id = '${ID.pushChildA}'`,
+      );
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: push_subscriptions_own_update carries WITH CHECK as well as USING, so a row ' +
+          'cannot be re-pointed at another account and start delivering their notifications ' +
+          `to a device the caller holds. Got ${error.code}`,
+      );
+
+      const { rowCount } = await s.q(
+        `update public.push_subscriptions set p256dh = 'stolen'
+          where id = '${ID.pushParent1}'`,
+      );
+      assert.equal(
+        rowCount,
+        0,
+        'proves: the other direction is closed too — somebody else row is invisible to an UPDATE',
+      );
+    }),
+  );
+
+  test(
+    'anon is refused on write as well as on read',
+    tx(async () => {
+      await s.asAnon();
+      for (const sql of [
+        `insert into public.push_subscriptions (user_id, endpoint, p256dh, auth_key)
+         values ('${ID.parent1User}', 'https://fcm.googleapis.test/fcm/send/anon', 'k', 'a')`,
+        `update public.push_subscriptions set p256dh = 'x'`,
+        `delete from public.push_subscriptions`,
+      ]) {
+        const error = await s.expectError(sql);
+        assert.equal(
+          error.code,
+          '42501',
+          `proves: anon holds no privilege on push_subscriptions (${sql.trim().split(' ')[0]}) — ` +
+            'the refusal is a privilege failure, so it survives any future policy mistake',
+        );
+      }
+    }),
+  );
+
+  test(
+    'the endpoint is unique table-wide, so a device that changes hands moves',
+    tx(async () => {
+      await s.asService();
+      const error = await s.expectError(
+        `insert into public.push_subscriptions (user_id, endpoint, p256dh, auth_key)
+         values ('${ID.parent2User}',
+                 'https://fcm.googleapis.test/fcm/send/parent1-endpoint', 'k', 'a')`,
+      );
+      assert.equal(
+        error.code,
+        '23505',
+        'proves: endpoint is unique across the whole table, not per user. The endpoint IS the ' +
+          'browser: two rows for one endpoint would mean one phone buzzing twice, and a phone ' +
+          'that changes owner must MOVE rather than gain a second row that keeps delivering ' +
+          `the previous owner family notifications. Got ${error.code}`,
+      );
+
+      // ... and the upsert the server action actually performs does move it.
+      const { rowCount } = await s.q(
+        `insert into public.push_subscriptions (user_id, endpoint, p256dh, auth_key)
+         values ('${ID.parent2User}',
+                 'https://fcm.googleapis.test/fcm/send/parent1-endpoint', 'k2', 'a2')
+         on conflict (endpoint) do update
+            set user_id = excluded.user_id,
+                p256dh = excluded.p256dh,
+                auth_key = excluded.auth_key`,
+      );
+      assert.equal(rowCount, 1, 'proves: the upsert the server action uses succeeds');
+
+      const { rows } = await s.q(
+        `select user_id from public.push_subscriptions where id = '${ID.pushParent1}'`,
+      );
+      assert.equal(
+        rows[0].user_id,
+        ID.parent2User,
+        'proves: re-subscribing REPLACED the row rather than accumulating a duplicate',
+      );
+    }),
+  );
+
+  test(
+    'notifications.pushed_at is claimed once, atomically, and is frozen against its owner',
+    tx(async () => {
+      await s.asService();
+      const { rows: created } = await s.q(
+        `insert into public.notifications (user_id, type, payload)
+         values ('${ID.parent1User}', 'assignment_submitted',
+                 jsonb_build_object('assignment_id', '${ID.aSubmitted}'))
+         returning id, pushed_at`,
+      );
+      assert.equal(
+        created[0].pushed_at,
+        null,
+        'proves: 0014 added the column with no default — a fresh notification is undelivered',
+      );
+
+      const claimed = await s.rows(
+        `update public.notifications set pushed_at = now()
+          where id = $1 and pushed_at is null
+         returning id`,
+        [created[0].id],
+      );
+      assert.equal(
+        claimed.length,
+        1,
+        'proves: the claim is one UPDATE ... WHERE pushed_at IS NULL ... RETURNING, so it is ' +
+          'atomic and two racing server actions cannot both win the same row',
+      );
+
+      const again = await s.rows(
+        `update public.notifications set pushed_at = now()
+          where id = $1 and pushed_at is null
+         returning id`,
+        [created[0].id],
+      );
+      assert.deepEqual(
+        again,
+        [],
+        'proves: a second attempt claims nothing — the delivery path sends one push per row ' +
+          'and no more',
+      );
+
+      await s.asUser(ID.parent1User);
+      const error = await s.expectError(
+        `update public.notifications set pushed_at = null where id = $1`,
+        [created[0].id],
+      );
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: notifications_owner_update_guard, extended by 0014, freezes pushed_at against ' +
+          `the owner exactly as it freezes payload and type. Got ${error.code}`,
+      );
+
+      const { rowCount } = await s.q(
+        `update public.notifications set read_at = now() where id = $1`,
+        [created[0].id],
+      );
+      assert.equal(
+        rowCount,
+        1,
+        'proves: read_at is still the one column the owner may write — the guard was extended, ' +
+          'not tightened into uselessness',
+      );
+    }),
+  );
+
+  test(
+    'the 0009 collapse does not clear pushed_at, which is the whole anti-buzz mechanism',
+    tx(async () => {
+      await s.asService();
+
+      const [first] = await s.rows(
+        `select public.enqueue_notification(
+                  '${ID.parent1User}', 'message_posted',
+                  jsonb_build_object('assignment_id', '${ID.aSubmitted}',
+                                     'preview', 'first')) as id`,
+      );
+      await s.q(`update public.notifications set pushed_at = now() where id = $1`, [
+        first.id,
+      ]);
+
+      // The seed may already hold an unread message_posted row for this pair, in
+      // which case the call above collapsed into it. Measure the delta, not an
+      // absolute — the point is that the SECOND message adds to the same row.
+      const [before] = await s.rows(
+        `select coalesce((payload ->> 'count')::int, 1) as count
+           from public.notifications where id = $1`,
+        [first.id],
+      );
+
+      const [second] = await s.rows(
+        `select public.enqueue_notification(
+                  '${ID.parent1User}', 'message_posted',
+                  jsonb_build_object('assignment_id', '${ID.aSubmitted}',
+                                     'preview', 'second')) as id`,
+      );
+      assert.equal(
+        second.id,
+        first.id,
+        'proves: 0009 collapsed the second message into the same unread row',
+      );
+
+      const [row] = await s.rows(
+        `select pushed_at, payload ->> 'count' as count
+           from public.notifications where id = $1`,
+        [first.id],
+      );
+      assert.equal(
+        Number(row.count),
+        before.count + 1,
+        'proves: the collapse did happen — the second message was folded into the same row ' +
+          'and bumped its count rather than creating a row of its own',
+      );
+      assert.notEqual(
+        row.pushed_at,
+        null,
+        'proves: and it left pushed_at alone. The delivery path therefore claims nothing for ' +
+          'the second message, so the parent phone buzzes once for a conversation rather ' +
+          'than once per line. THIS is why three messages are not three buzzes.',
+      );
+    }),
+  );
+});

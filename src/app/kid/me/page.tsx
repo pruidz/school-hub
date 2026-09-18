@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { signOut } from "@/lib/auth/actions";
 import { requireChild } from "@/lib/auth/session";
 import { ka, t } from "@/lib/i18n/ka";
+import { PushSettingsCard } from "@/features/notifications/push";
 import { getKidProfile } from "@/features/children/queries";
 import { getKidStats } from "@/features/children/kid-stats";
 import { ColorDot } from "@/features/children/form-ui";
@@ -106,12 +107,30 @@ export default async function KidMePage() {
         </CardContent>
       </Card>
 
-      <form action={signOut}>
-        <Button type="submit" variant="outline" size="lg" className="h-12 w-full">
-          <LogOut />
-          {ka.auth.signOut}
-        </Button>
-      </form>
+      {/* Above sign-out, below the subjects: the child is the one who gets
+          "your homework came back for a redo", so they need this too. */}
+      <PushSettingsCard variant="kid" />
+
+      <div className="grid gap-2">
+        <form action={signOut}>
+          <Button
+            type="submit"
+            variant="outline"
+            size="lg"
+            className="h-12 w-full"
+          >
+            <LogOut />
+            {ka.auth.signOut}
+          </Button>
+        </form>
+
+        {/* Signing out is only safe if getting back in is cheap. The device
+            remembers this child, so it is a PIN away — say so, or the button
+            looks like a one-way door. */}
+        <p className="text-center text-sm text-muted-foreground">
+          {ka.kid.signOutHint}
+        </p>
+      </div>
     </div>
   );
 }

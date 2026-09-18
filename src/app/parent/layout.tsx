@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 
 import { ParentShell } from "@/components/layout/parent-shell";
+import { PwaRegister } from "@/components/layout/pwa-register";
 import { ACTIVE_CHILD_COOKIE } from "@/lib/auth/active-child";
 import { requireParent } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
@@ -43,6 +44,9 @@ export default async function ParentLayout({
       childList={childList}
       activeChildId={activeChildId}
     >
+      {/* Parents install this too, and push needs a registered worker
+          before they ever open the settings page. */}
+      <PwaRegister />
       {children}
     </ParentShell>
   );

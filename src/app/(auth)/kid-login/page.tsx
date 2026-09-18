@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { InstallHint } from "@/components/install/install-hint";
 import { ka } from "@/lib/i18n/ka";
 
 import { AuthCard } from "../_components/auth-card";
@@ -17,6 +18,11 @@ export default function KidLoginPage() {
       >
         <KidLoginForm />
       </AuthCard>
+
+      {/* The child signs in here far more often than anywhere else, so this is
+          where the "add it to the Home Screen" hint has the best chance of
+          being read — and of being acted on before the session is lost. */}
+      <InstallHint />
 
       <p className="text-center text-sm text-muted-foreground">
         <Link href="/login" className="underline underline-offset-4">

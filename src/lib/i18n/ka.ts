@@ -269,6 +269,12 @@ export const ka = {
     kidAddDevice: "მოწვევის კოდით შესვლა",
     kidRemoveDevice: "წაშლა ამ მოწყობილობიდან",
     kidBackToList: "სხვა მოსწავლე",
+
+    // child — sign in, nobody remembered on this device
+    kidNoDevicesTitle: "აქ ჯერ არავინ შესულა",
+    kidNoDevicesHelp:
+      "სთხოვე მშობელს ახალი მოწვევის კოდი — ის კოდს თავის გვერდზე შექმნის.",
+    kidNoDevicesAction: "კოდი მაქვს, შევდივარ",
   },
 
   // ------------------------------------------------------------ children ---
@@ -626,6 +632,7 @@ export const ka = {
     statsWeekDone: "ამ კვირაში ჩაბარებული",
     statsStreak: "ზედიზედ დღეები",
     statsCount: "{count}",
+    signOutHint: "ეს მოწყობილობა დაგიმახსოვრებს — დაბრუნება PIN-კოდით შეგიძლია.",
 
     // assignments (C3)
     assignmentsTitle: "დავალებები",
@@ -866,11 +873,82 @@ export const ka = {
     newAssignment: "ახალი დავალება",
   },
 
+  // ---------------------------------------------------------------- push ---
+  // Web Push (0014). `push.*` is the settings UI; the text of a delivered
+  // notification is built from `notifications.*` by notificationTitle() /
+  // notificationSubtitle(), so a push and the bell always say the same thing.
+  push: {
+    title: "შეტყობინებები ტელეფონზე",
+    subtitle:
+      "მიიღეთ შეტყობინება მაშინაც, როცა აპლიკაცია დახურულია — ჩაბარებული დავალება, შემოწმება და ახალი წერილი.",
+
+    // Current state, in words rather than a browser term.
+    checking: "მოწმდება…",
+    stateOn: "ჩართულია ამ მოწყობილობაზე",
+    stateOff: "ამ მოწყობილობაზე გამორთულია",
+    stateBlocked: "ბრაუზერმა შეტყობინებები დაბლოკა",
+    stateBlockedHint:
+      "ჩასართავად გახსენით ბრაუზერის პარამეტრები ამ საიტისთვის და დაუშვით შეტყობინებები, შემდეგ დაარეფრეშეთ გვერდი.",
+    stateUnsupported: "ეს ბრაუზერი შეტყობინებებს არ უჭერს მხარს",
+    stateUnsupportedHint:
+      "სცადეთ Chrome, Edge, Firefox ან Safari განახლებულ ვერსიაზე.",
+    stateNeedsInstall: "ჯერ დაამატეთ აპლიკაცია მთავარ ეკრანზე",
+    needsInstallHint:
+      "iPhone-სა და iPad-ზე შეტყობინებები მუშაობს მხოლოდ მთავარ ეკრანზე დამატებული აპლიკაციიდან. Safari-ში დააჭირეთ გაზიარების ღილაკს, აირჩიეთ „Add to Home Screen“, გახსენით აპლიკაცია მთავარი ეკრანიდან და დაბრუნდით ამ გვერდზე.",
+
+    enable: "შეტყობინებების ჩართვა",
+    enabling: "ირთვება…",
+    enabled: "შეტყობინებები ჩაირთო",
+    disableThis: "ამ მოწყობილობაზე გამორთვა",
+    disabled: "ამ მოწყობილობაზე გამოირთო",
+
+    devicesTitle: "მოწყობილობები",
+    devicesHint: "შეტყობინებები მოდის ყველა ჩამოთვლილ მოწყობილობაზე.",
+    devicesEmpty: "ჯერ არცერთი მოწყობილობა არ არის დამატებული",
+    deviceThis: "ეს მოწყობილობა",
+    deviceUnknown: "უცნობი მოწყობილობა",
+    deviceAdded: "დამატებულია {date}",
+    deviceRemove: "წაშლა",
+    deviceRemoved: "მოწყობილობა წაიშალა",
+
+    test: "სატესტო შეტყობინების გაგზავნა",
+    testing: "იგზავნება…",
+    testSent: "გაიგზავნა — შეამოწმეთ ტელეფონი",
+    testTitle: "სკოლა",
+    testBody: "შეტყობინებები მუშაობს.",
+
+    errGeneric: "შეტყობინებები ვერ ჩაირთო",
+    errDenied: "შეტყობინებები ამ ბრაუზერში აკრძალულია",
+    errNoDevice: "ჯერ ჩართეთ შეტყობინებები ამ მოწყობილობაზე",
+
+    // ---- the same thing, said to a nine-year-old -------------------------
+    kidTitle: "შეტყობინებები",
+    kidSubtitle: "რომ მაშინვე გაიგო, როცა მშობელი დავალებას შეამოწმებს.",
+    kidEnable: "ჩართვა",
+    kidStateOn: "ჩართულია — შეტყობინება ტელეფონზე მოვა",
+    kidStateOff: "გამორთულია",
+    kidNeedsInstall:
+      "ჯერ დაამატე აპლიკაცია მთავარ ეკრანზე და იქიდან გახსენი — მერე ეს ღილაკი იმუშავებს.",
+    kidTest: "გამოცადე",
+    kidTestBody: "კარგია! შეტყობინებები მუშაობს.",
+    kidDisable: "გამორთვა",
+  },
+
   // ----------------------------------------------------------------- pwa ---
   pwa: {
     appShortName: "სკოლა",
     offlineTitle: "ინტერნეტი გათიშულია",
     offlineBody: "შეამოწმე კავშირი და სცადე თავიდან.",
+
+    // add to home screen
+    installTitle: "დაამატე აპი მთავარ ეკრანზე",
+    // iOS has no Georgian interface, so the menu item is quoted in the
+    // English the child will actually see on the screen.
+    installIosStep1: "დააჭირე გაზიარების ღილაკს ქვემოთ",
+    installIosStep2: "აირჩიე «Add to Home Screen»",
+    installBody: "აპი ცალკე გაიხსნება და უფრო სწრაფად იმუშავებს.",
+    installAction: "დაინსტალირება",
+    installDismiss: "დამალვა",
   },
 
   // ------------------------------------------------------------- reports ---
@@ -1101,6 +1179,9 @@ export const ka = {
     childrenHint: "მოწვევის კოდები, PIN-ის ბლოკი და ინტერფეისის რეჟიმი",
     laterTitle: "მოგვიანებით",
     laterBody: "შეტყობინებები და რეპორტები მომდევნო ფაზაში დაემატება.",
+    // `laterBody` is kept (keys are never removed) but is now wrong: push
+    // notifications ship in 0014 and have their own section above.
+    laterBodyV2: "ელფოსტის შეტყობინებები მომდევნო ფაზაში დაემატება.",
   },
 
   // -------------------------------------------------------------- status ---

@@ -127,4 +127,47 @@
   html {
     @apply font-sans;
   }
+
+  /*
+   * Home Screen behaviour. The app is installed on iOS as a standalone web
+   * app, where the browser chrome that normally papers over these is gone.
+   */
+  :root {
+    /* Follows the applied theme, not the OS one, so native form controls,
+       scrollbars and the canvas under the page match what next-themes set. */
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  html {
+    /* iOS enlarges text when the phone is rotated unless this is pinned. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* No grey flash on every tap; :active and :focus-visible carry the state. */
+    -webkit-tap-highlight-color: transparent;
+    /* Stops the whole shell rubber-banding away from the notch. Scrollable
+       panes inside the page are unaffected. */
+    overscroll-behavior-y: none;
+  }
+
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+@layer utilities {
+  /* Horizontal padding that clears the notch in landscape but never shrinks
+     below the value it is given. */
+  .px-safe {
+    padding-inline: max(var(--px-safe, 1rem), env(safe-area-inset-left))
+      max(var(--px-safe, 1rem), env(safe-area-inset-right));
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }

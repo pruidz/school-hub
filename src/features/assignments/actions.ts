@@ -19,6 +19,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { schedulePushForAssignment } from "@/features/notifications/push/deliver";
 import { requireChild, requireParent } from "@/lib/auth/session";
 import { fail, fieldErrorsFrom, ok, type ActionFailure, type ActionResult } from "@/lib/auth/result";
 import {
@@ -632,6 +633,11 @@ export async function submitAssignmentAction(
   if (noRowsAffected(data)) return fail(ka.assignments.errForbidden);
 
   revalidateAssignment(existing.id);
+  // 0009's trigger has already written "X handed in their homework" to every
+  // parent in the family. Get it onto their phones — after the response, so a
+  // push service having a bad day cannot turn a successful hand-in into an
+  // error the child sees.
+  schedulePushForAssignment(existing.id);
   return ok(null);
 }
 
@@ -685,6 +691,7 @@ export async function approveAssignmentAction(
   if (noRowsAffected(data)) return fail(ka.assignments.errReviewerOnly);
 
   revalidateAssignment(existing.id, existing.childId);
+  schedulePushForAssignment(existing.id);
   return ok(null);
 }
 
@@ -737,6 +744,7 @@ export async function requestRedoAction(
   if (noRowsAffected(data)) return fail(ka.assignments.errReviewerOnly);
 
   revalidateAssignment(existing.id, existing.childId);
+  schedulePushForAssignment(existing.id);
   return ok(null);
 }
 
@@ -794,5 +802,6 @@ export async function reopenAssignmentAction(
   if (noRowsAffected(data)) return fail(ka.assignments.errReopenReviewerOnly);
 
   revalidateAssignment(existing.id, existing.childId);
+  schedulePushForAssignment(existing.id);
   return ok(null);
 }

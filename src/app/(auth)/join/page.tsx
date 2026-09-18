@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { InstallHint } from "@/components/install";
 import { ka } from "@/lib/i18n/ka";
 
 import { AuthCard } from "../_components/auth-card";
@@ -23,6 +24,9 @@ export default function JoinPage() {
       }
     >
       <JoinForm />
+      {/* A child redeeming a code is about to become a daily user, and on iOS
+          push only exists once the app is on the Home Screen. */}
+      <InstallHint />
     </AuthCard>
   );
 }
