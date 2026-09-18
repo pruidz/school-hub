@@ -47,3 +47,6 @@ next-env.d.ts
 # keep the template, ignore real secrets
 !.env.local.example
 supabase/.temp/
+
+.vercel
+.env*
