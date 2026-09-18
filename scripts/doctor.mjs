@@ -77,8 +77,15 @@ if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/.test(url)) {
   ok("Supabase-ის მისამართი");
 }
 
-/** Supabase keys are JWTs; the role is in the payload. */
-function jwtRole(token) {
+/**
+ * Which kind of key this is. Supabase has two formats in the wild: the legacy
+ * JWTs, where the role sits in the payload, and the newer `sb_publishable_` /
+ * `sb_secret_` keys, where the prefix says it outright.
+ */
+function keyRole(token) {
+  if (!token) return null;
+  if (token.startsWith("sb_publishable_")) return "anon";
+  if (token.startsWith("sb_secret_")) return "service_role";
   try {
     const payload = JSON.parse(
       Buffer.from(token.split(".")[1], "base64url").toString("utf8"),
@@ -89,8 +96,8 @@ function jwtRole(token) {
   }
 }
 
-const anonRole = jwtRole(env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-const svcRole = jwtRole(env.SUPABASE_SERVICE_ROLE_KEY);
+const anonRole = keyRole(env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const svcRole = keyRole(env.SUPABASE_SERVICE_ROLE_KEY);
 
 if (anonRole === "service_role" || svcRole === "anon") {
   bad(
