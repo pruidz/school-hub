@@ -10,6 +10,7 @@ import {
 } from "@/features/assignments/dates";
 import { getReviewBundle } from "@/features/assignments/queries";
 import { AssignmentStatusBadge } from "@/features/assignments/status-badge";
+import { EvidenceGallery } from "@/features/attachments/evidence-gallery";
 import { PhotoGallery } from "@/features/attachments/photo-gallery";
 import { PhotoUploader } from "@/features/attachments/photo-uploader";
 import { MessageThread } from "@/features/messages/message-thread";
@@ -134,9 +135,14 @@ export default async function ParentAssignmentPage({
 
         <section className="grid gap-3 rounded-xl border bg-card p-3">
           <h2 className="text-sm font-medium text-muted-foreground">
-            {ka.assignments.solutionPhotos}
+            {ka.assignments.solutionEvidence}
           </h2>
-          <PhotoGallery attachments={solutionAttachments} zoom />
+          {/* Photos and recordings together — oral homework hands in audio. */}
+          <EvidenceGallery
+            attachments={solutionAttachments}
+            zoom
+            emptyLabel={ka.review.noSolutionEvidence}
+          />
         </section>
 
         {assignment.self_rating || assignment.minutes_spent !== null ||

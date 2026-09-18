@@ -1,10 +1,15 @@
 "use client";
 
 /**
- * The child's side of the status machine: start work, rate it, say how long it
- * took and what was hard, then hand it in.
+ * The child's side of the status machine: rate the work, say how long it took
+ * and what was hard, then hand it in.
  *
- * Submitting with no solution photo is blocked here with a plain explanation —
+ * There is no „დაწყება" button any more. Opening the page is what moves
+ * `assigned -> in_progress` (see `auto-start.tsx`), so the only thing left for
+ * the child to declare here is that they have finished.
+ *
+ * Submitting with no solution evidence — a photo OR a recording, because oral
+ * homework has no photo to take — is blocked here with a plain explanation,
  * and again in `submitAssignmentAction`, because the button is not a guard.
  *
  * `ui_mode = "simple"` means bigger controls and only the required fields.
@@ -12,17 +17,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Play, Send } from "lucide-react";
+import { Check, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  startAssignmentAction,
-  submitAssignmentAction,
-} from "@/features/assignments/actions";
+import { submitAssignmentAction } from "@/features/assignments/actions";
 import type { AssignmentStatus } from "@/lib/assignment-status";
 import type { ChildUiMode } from "@/lib/db.types";
 import { ka } from "@/lib/i18n/ka";
@@ -61,35 +63,20 @@ export function SubmitPanel({
     initialMinutes === null ? "" : String(initialMinutes),
   );
   const [note, setNote] = React.useState(initialNote ?? "");
-  const [busy, setBusy] = React.useState<null | "start" | "submit">(null);
+  const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const notStarted = status === "assigned" || status === "redo";
   const canSubmit = status !== "submitted" && status !== "approved";
-  const missingPhoto = solutionCount === 0;
-
-  const start = async () => {
-    setBusy("start");
-    setError(null);
-    const result = await startAssignmentAction({ assignmentId });
-    setBusy(null);
-
-    if (!result.ok) {
-      setError(result.message);
-      toast.error(result.message);
-      return;
-    }
-    toast.success(ka.assignments.started);
-    router.refresh();
-  };
+  /** Photos and recordings both count: `solutionCount` is every solution row. */
+  const missingEvidence = solutionCount === 0;
 
   const submit = async () => {
-    if (missingPhoto) {
-      setError(ka.kid.needSolutionPhoto);
+    if (missingEvidence) {
+      setError(ka.kid.needSolutionEvidence);
       return;
     }
 
-    setBusy("submit");
+    setBusy(true);
     setError(null);
 
     const parsedMinutes = minutes.trim() === "" ? null : Number(minutes);
@@ -104,7 +91,7 @@ export function SubmitPanel({
           : null,
     });
 
-    setBusy(null);
+    setBusy(false);
 
     if (!result.ok) {
       setError(result.message);
@@ -119,20 +106,6 @@ export function SubmitPanel({
 
   return (
     <section className="grid gap-4 rounded-xl border bg-card p-4">
-      {notStarted ? (
-        <Button
-          type="button"
-          variant="secondary"
-          size="lg"
-          className="h-12"
-          disabled={busy !== null}
-          onClick={() => void start()}
-        >
-          {busy === "start" ? <Loader2 className="animate-spin" /> : <Play />}
-          {ka.kid.startWork}
-        </Button>
-      ) : null}
-
       <fieldset className="grid gap-2">
         <legend className={cn("mb-1 font-medium", simple && "text-lg")}>
           {ka.kid.howWasIt}
@@ -199,9 +172,9 @@ export function SubmitPanel({
         </>
       ) : null}
 
-      {missingPhoto ? (
+      {missingEvidence ? (
         <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-800 dark:text-amber-300">
-          {ka.kid.needSolutionPhoto}
+          {ka.kid.needSolutionEvidence}
         </p>
       ) : null}
 
@@ -215,12 +188,12 @@ export function SubmitPanel({
         type="button"
         size="lg"
         className="h-14 text-base"
-        disabled={busy !== null || missingPhoto}
+        disabled={busy || missingEvidence}
         onClick={() => void submit()}
       >
-        {busy === "submit" ? (
+        {busy ? (
           <Loader2 className="animate-spin" />
-        ) : missingPhoto ? (
+        ) : missingEvidence ? (
           <Check />
         ) : (
           <Send />

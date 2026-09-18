@@ -3688,3 +3688,377 @@ describe('24. a child can add their own homework, and only their own (0012)', ()
     }),
   );
 });
+
+// =============================================================================
+// 25. Oral homework: a recording is solution evidence (SPEC 4 / C3)
+//
+// A large share of primary-school homework is oral â€” learn a poem, read a
+// passage aloud, practise pronunciation â€” and a photo proves nothing about any
+// of it. Audio therefore has to be a first-class second kind of solution
+// evidence, which means two claims have to hold at the database level:
+//
+//   a) an `attachments` row whose mime is audio is an ordinary attachment. It
+//      is not a new `kind`, it needs no new policy, and it is fenced by
+//      child_id exactly like a photo â€” including the fact that the child_id it
+//      claims is discarded and re-derived (0007);
+//   b) the storage fence is about the PATH, not the extension. `.m4a` under a
+//      sibling's prefix is refused for precisely the same reason `.webp` is.
+//
+// The first test also records why there is no `0013_*.sql`: the bucket 0005
+// created already declares the audio mimes and a 10 MB ceiling, so nothing in
+// the migrations had to be relaxed to make any of this work.
+// =============================================================================
+describe('25. a recording is solution evidence, fenced exactly like a photo', () => {
+  /** What `src/lib/images.ts` labels an upload with, after canonicalisation. */
+  const AUDIO_MIMES = ['audio/webm', 'audio/mpeg', 'audio/mp4', 'audio/ogg'];
+
+  /** `{child}/{second}/{uuid}.{ext}`, unique per call. */
+  const objectName = (child, second, ext) =>
+    `${child}/${second}/25-${Math.random().toString(16).slice(2)}.${ext}`;
+
+  const INSERT_AUDIO_ROW = `
+    insert into public.attachments
+      (assignment_id, child_id, kind, storage_path, mime, size_bytes)
+    values ($1, $2, $3, $4, $5, 900000)`;
+
+  test(
+    'the evidence bucket already accepts audio â€” no migration had to relax it',
+    tx(async () => {
+      await s.asService();
+      const rows = await s.rows(
+        `select allowed_mime_types, file_size_limit, public
+           from storage.buckets where id = 'evidence'`,
+      );
+      assert.equal(rows.length, 1, 'proves: 0005 created the bucket');
+
+      for (const mime of AUDIO_MIMES) {
+        assert.ok(
+          rows[0].allowed_mime_types.includes(mime),
+          `proves: the bucket declares ${mime}, so a recording is refused by nothing in ` +
+            'the schema â€” this is the assertion that makes a 0013 migration unnecessary ' +
+            'rather than merely unwritten',
+        );
+      }
+      assert.equal(
+        Number(rows[0].file_size_limit),
+        10485760,
+        'proves: MAX_AUDIO_BYTES in src/lib/images.ts and the bucket agree on 10 MB, so ' +
+          'the storage service refuses an oversized recording mid-upload and the ' +
+          'server-side re-check in registerAttachmentAction is never the only guard',
+      );
+      assert.equal(
+        rows[0].public,
+        false,
+        'proves: a recording of a child reading aloud sits behind a signed URL like every ' +
+          'photo â€” audio did not quietly open the bucket',
+      );
+    }),
+  );
+
+  // ---------------------------------------------------------------- rows ----
+  for (const mime of AUDIO_MIMES) {
+    test(
+      `child A can attach ${mime} to their own assignment as solution evidence`,
+      tx(async () => {
+        await s.asUser(ID.childAUser);
+        const { rows, rowCount } = await s.q(
+          `${INSERT_AUDIO_ROW} returning child_id, uploaded_by, mime, width, height`,
+          [
+            ID.aAssigned,
+            ID.childA,
+            'solution',
+            objectName(ID.childA, ID.aAssigned, 'm4a'),
+            mime,
+          ],
+        );
+
+        assert.equal(
+          rowCount,
+          1,
+          `proves: ${mime} needs no policy of its own â€” attachments_insert_own already ` +
+            'covers it, because what it fences is the child and the kind, not the format',
+        );
+        assert.equal(rows[0].mime, mime, 'proves: the mime is stored as given');
+        assert.deepEqual(
+          { child: rows[0].child_id, by: rows[0].uploaded_by },
+          { child: ID.childA, by: ID.childAUser },
+          'proves: 0007 still derives child_id and uploaded_by for a recording',
+        );
+        assert.deepEqual(
+          { w: rows[0].width, h: rows[0].height },
+          { w: null, h: null },
+          'proves: a recording carries no pixel size, which is what ' +
+            'registerAttachmentAction forces to null rather than storing the browser claim',
+        );
+      }),
+    );
+  }
+
+  test(
+    'child A cannot attach a recording to a sibling assignment',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const error = await s.expectError(INSERT_AUDIO_ROW, [
+        ID.bAssigned,
+        ID.childB,
+        'solution',
+        objectName(ID.childB, ID.bAssigned, 'm4a'),
+        'audio/mp4',
+      ]);
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: a child cannot put a recording on a sibling homework row â€” refused for ' +
+          'exactly the reason a photo would be',
+      );
+    }),
+  );
+
+  test(
+    'claiming their own child_id does not smuggle a recording onto a sibling assignment',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const error = await s.expectError(INSERT_AUDIO_ROW, [
+        ID.bAssigned,
+        ID.childA,
+        'solution',
+        objectName(ID.childA, ID.bAssigned, 'm4a'),
+        'audio/mp4',
+      ]);
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: sending their OWN child_id while pointing at a sibling assignment fails ' +
+          'too â€” 0007 overwrites the claim with the assignment owner before the policy is ' +
+          'evaluated, so the forged value never helps',
+      );
+    }),
+  );
+
+  test(
+    'a child cannot file a recording as review evidence',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const error = await s.expectError(INSERT_AUDIO_ROW, [
+        ID.aAssigned,
+        ID.childA,
+        'review',
+        objectName(ID.childA, ID.aAssigned, 'm4a'),
+        'audio/mp4',
+      ]);
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: audio did not widen what a child may claim to be â€” `review` is still the ' +
+          'reviewer kind, whatever the format',
+      );
+    }),
+  );
+
+  test(
+    'a sibling cannot read the recording, the parent can',
+    tx(async () => {
+      const name = objectName(ID.childA, ID.aAssigned, 'm4a');
+
+      await s.asUser(ID.childAUser);
+      await s.q(INSERT_AUDIO_ROW, [
+        ID.aAssigned,
+        ID.childA,
+        'solution',
+        name,
+        'audio/mp4',
+      ]);
+
+      await s.asUser(ID.childBUser);
+      const sibling = await s.rows(
+        `select id from public.attachments where storage_path = $1`,
+        [name],
+      );
+      assert.equal(
+        sibling.length,
+        0,
+        'proves: a child reading a poem aloud is not audible to their sibling',
+      );
+
+      await s.asUser(ID.parent1User);
+      const parent = await s.rows(
+        `select id from public.attachments where storage_path = $1`,
+        [name],
+      );
+      assert.equal(
+        parent.length,
+        1,
+        'proves: the person who actually has to listen to it does see it',
+      );
+    }),
+  );
+
+  test(
+    'an assignment whose only solution evidence is audio is submittable',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      await s.q(INSERT_AUDIO_ROW, [
+        ID.aAssigned,
+        ID.childA,
+        'solution',
+        objectName(ID.childA, ID.aAssigned, 'm4a'),
+        'audio/mp4',
+      ]);
+
+      // Exactly the query submitAssignmentAction runs before it allows a
+      // submission: kind = 'solution', deliberately NOT narrowed by mime.
+      const counted = await s.rows(
+        `select count(*)::int as n from public.attachments
+          where assignment_id = $1 and kind = 'solution'`,
+        [ID.aAssigned],
+      );
+      assert.ok(
+        counted[0].n >= 1,
+        'proves: the "at least one piece of solution evidence" gate is satisfied by a ' +
+          'recording alone. While that gate asked for a photo, a child literally could ' +
+          'not hand in oral homework at all',
+      );
+
+      const { rowCount } = await s.q(
+        `update public.assignments set status = 'submitted' where id = $1`,
+        [ID.aAssigned],
+      );
+      assert.equal(
+        rowCount,
+        1,
+        'proves: and the status machine itself never cared about the format',
+      );
+    }),
+  );
+
+  // ------------------------------------------------------------- storage ----
+  for (const ext of ['m4a', 'mp3', 'ogg', 'webm']) {
+    test(
+      `child A can INSERT their own .${ext} object, and not one under child B prefix`,
+      tx(async () => {
+        await s.asUser(ID.childAUser);
+
+        const mine = objectName(ID.childA, ID.aAssigned, ext);
+        const { rowCount } = await s.q(
+          `insert into storage.objects (bucket_id, name, owner)
+           values ('evidence', $1, $2)`,
+          [mine, ID.childAUser],
+        );
+        assert.equal(
+          rowCount,
+          1,
+          `proves: ${mine} is accepted â€” storage_child_id() reads the first segment and ` +
+            'has no opinion whatsoever about the extension',
+        );
+
+        const theirs = objectName(ID.childB, ID.bAssigned, ext);
+        const error = await s.expectError(
+          `insert into storage.objects (bucket_id, name, owner)
+           values ('evidence', $1, $2)`,
+          [theirs, ID.childAUser],
+        );
+        assert.equal(
+          error.code,
+          '42501',
+          `proves: ${theirs} is refused. The audio fence is the SAME single ` +
+            'first-segment policy test 9 proves for photos â€” a new format did not add a ' +
+            'way around it',
+        );
+      }),
+    );
+  }
+
+  test(
+    'a lesson-shaped audio path is fenced too',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+
+      const suffix = () => Math.random().toString(16).slice(2);
+      const mine = `${ID.childA}/lesson/${ID.aLesson}/25-${suffix()}.m4a`;
+      const { rowCount } = await s.q(
+        `insert into storage.objects (bucket_id, name, owner)
+         values ('evidence', $1, $2)`,
+        [mine, ID.childAUser],
+      );
+      assert.equal(
+        rowCount,
+        1,
+        'proves: the four-segment shape works for audio as well',
+      );
+
+      const theirs = `${ID.childB}/lesson/${ID.bLesson}/25-${suffix()}.m4a`;
+      const error = await s.expectError(
+        `insert into storage.objects (bucket_id, name, owner)
+         values ('evidence', $1, $2)`,
+        [theirs, ID.childAUser],
+      );
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: both path shapes stay covered by the one policy, for audio as for images',
+      );
+    }),
+  );
+
+  test(
+    'child A cannot rename their own recording into child B prefix',
+    tx(async () => {
+      await s.asUser(ID.childAUser);
+      const mine = objectName(ID.childA, ID.aAssigned, 'm4a');
+      await s.q(
+        `insert into storage.objects (bucket_id, name, owner)
+         values ('evidence', $1, $2)`,
+        [mine, ID.childAUser],
+      );
+
+      const error = await s.expectError(
+        `update storage.objects set name = $1 where name = $2`,
+        [objectName(ID.childB, ID.bAssigned, 'm4a'), mine],
+      );
+      assert.equal(
+        error.code,
+        '42501',
+        'proves: evidence_child_update re-evaluates the NEW name for a recording too, so ' +
+          'a child cannot plant audio in a sibling folder by renaming their own',
+      );
+    }),
+  );
+
+  test(
+    'child A cannot delete a sibling recording, and the parent reaches both',
+    tx(async () => {
+      const aName = objectName(ID.childA, ID.aAssigned, 'm4a');
+      const bName = objectName(ID.childB, ID.bAssigned, 'm4a');
+
+      await s.asService();
+      await s.q(
+        `insert into storage.objects (bucket_id, name, owner)
+         values ('evidence', $1, $2), ('evidence', $3, $4)`,
+        [aName, ID.childAUser, bName, ID.childBUser],
+      );
+
+      await s.asUser(ID.childAUser);
+      const { rowCount } = await s.q(
+        `delete from storage.objects where name = $1`,
+        [bName],
+      );
+      assert.equal(
+        rowCount,
+        0,
+        'proves: a child cannot delete a sibling recording',
+      );
+
+      await s.asUser(ID.parent1User);
+      const seen = await s.rows(
+        `select name from storage.objects where name in ($1, $2) order by 1`,
+        [aName, bName],
+      );
+      assert.equal(
+        seen.length,
+        2,
+        'proves: evidence_parent_all spans both children for audio, which is what lets the ' +
+          'review screen play a recitation from either of them',
+      );
+    }),
+  );
+});

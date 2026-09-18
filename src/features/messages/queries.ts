@@ -17,9 +17,15 @@ import { getSessionUser } from "@/lib/auth/session";
 import type { Attachment } from "@/lib/db.types";
 import { createClient, type ServerClient } from "@/lib/supabase/server";
 
-import type { Thread, ThreadMessage } from "./types";
+import type { ChatThreadSummary, Thread, ThreadContext, ThreadMessage } from "./types";
 
-export type { Thread, ThreadMessage } from "./types";
+export type {
+  ChatMessageKind,
+  ChatThreadSummary,
+  Thread,
+  ThreadContext,
+  ThreadMessage,
+} from "./types";
 
 async function loadAuthorNames(
   supabase: ServerClient,
@@ -180,20 +186,14 @@ export async function getUnreadCounts(
   return counts;
 }
 
-export type ChatThreadSummary = {
-  assignmentId: string;
-  title: string;
-  subjectName: string | null;
-  subjectColor: string | null;
-  childName: string | null;
-  lastMessageAt: string;
-  lastMessagePreview: string;
-  unreadCount: number;
-};
-
 /**
  * Every assignment that has at least one message, unread first then newest.
  * Scoped by RLS, so a child sees only their own and a parent the whole family.
+ *
+ * Six round trips whatever the number of threads: the messages, then
+ * assignments + reads, then subjects + children, then the display names of the
+ * last author of each thread. Nothing is per-row — a family with fifty finished
+ * conversations costs the same as one with three.
  */
 export async function getChatThreads(): Promise<ChatThreadSummary[]> {
   const user = await getSessionUser();
@@ -222,7 +222,7 @@ export async function getChatThreads(): Promise<ChatThreadSummary[]> {
   const [{ data: assignments }, { data: reads }] = await Promise.all([
     supabase
       .from("assignments")
-      .select("id, title, subject_id, child_id")
+      .select("id, title, status, subject_id, child_id")
       .in("id", assignmentIds),
     supabase
       .from("message_reads")
@@ -258,8 +258,18 @@ export async function getChatThreads(): Promise<ChatThreadSummary[]> {
           data: [] as { id: string; name: string; color: string }[],
         }),
     childIds.length > 0
-      ? supabase.from("children").select("id, name").in("id", childIds)
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ? supabase
+          .from("children")
+          .select("id, name, color, avatar_url")
+          .in("id", childIds)
+      : Promise.resolve({
+          data: [] as {
+            id: string;
+            name: string;
+            color: string;
+            avatar_url: string | null;
+          }[],
+        }),
   ]);
 
   const subjectById = new Map((subjects ?? []).map((row) => [row.id, row]));
@@ -283,27 +293,115 @@ export async function getChatThreads(): Promise<ChatThreadSummary[]> {
     const existing = summaries.get(assignmentId);
     if (existing) {
       existing.unreadCount += unread;
+      existing.messageCount += 1;
       continue;
     }
 
     const subject = assignment.subject_id
       ? subjectById.get(assignment.subject_id)
       : undefined;
+    const child = childById.get(assignment.child_id);
 
     summaries.set(assignmentId, {
       assignmentId,
       title: assignment.title,
+      status: assignment.status,
       subjectName: subject?.name ?? null,
       subjectColor: subject?.color ?? null,
-      childName: childById.get(assignment.child_id)?.name ?? null,
+      childId: assignment.child_id,
+      childName: child?.name ?? null,
+      childColor: child?.color ?? null,
+      childAvatarUrl: child?.avatar_url ?? null,
       lastMessageAt: row.created_at,
       lastMessagePreview: row.body ?? "",
+      lastMessageKind: row.body
+        ? "text"
+        : row.voice_path
+          ? "voice"
+          : "photo",
+      lastMessageAuthorId: row.author_id,
+      lastMessageAuthorName: null,
+      lastMessageIsMine: row.author_id === user.id,
       unreadCount: unread,
+      messageCount: 1,
     });
   }
 
-  return Array.from(summaries.values()).sort((a, b) => {
+  const list = Array.from(summaries.values());
+
+  // One extra read for every "who spoke last" in the whole list.
+  const names = await loadAuthorNames(
+    supabase,
+    Array.from(
+      new Set(
+        list
+          .map((thread) => thread.lastMessageAuthorId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ),
+  );
+  for (const thread of list) {
+    thread.lastMessageAuthorName = thread.lastMessageAuthorId
+      ? (names.get(thread.lastMessageAuthorId) ?? null)
+      : null;
+  }
+
+  return list.sort((a, b) => {
     if (a.unreadCount !== b.unreadCount) return b.unreadCount - a.unreadCount;
     return b.lastMessageAt.localeCompare(a.lastMessageAt);
   });
+}
+
+/**
+ * The header of one thread: which assignment it hangs off, whose it is and
+ * where the "go to the assignment" link should point.
+ *
+ * Returns `null` when the assignment is not visible to the caller — RLS decides
+ * that, and `/parent/chat/[assignmentId]` turns it into a 404. Three round
+ * trips: the assignment, then its child and subject in parallel.
+ */
+export async function getThreadContext(
+  assignmentId: string,
+): Promise<ThreadContext | null> {
+  const user = await getSessionUser();
+  if (!user) return null;
+
+  const supabase = await createClient();
+
+  const { data: assignment } = await supabase
+    .from("assignments")
+    .select("id, title, status, due_date, child_id, subject_id")
+    .eq("id", assignmentId)
+    .maybeSingle();
+  if (!assignment) return null;
+
+  const [{ data: child }, { data: subject }] = await Promise.all([
+    supabase
+      .from("children")
+      .select("id, name, color, avatar_url")
+      .eq("id", assignment.child_id)
+      .maybeSingle(),
+    assignment.subject_id
+      ? supabase
+          .from("subjects")
+          .select("id, name, color")
+          .eq("id", assignment.subject_id)
+          .maybeSingle()
+      : Promise.resolve({
+          data: null as { id: string; name: string; color: string } | null,
+        }),
+  ]);
+
+  return {
+    assignmentId: assignment.id,
+    title: assignment.title,
+    status: assignment.status,
+    dueDate: assignment.due_date,
+    subjectName: subject?.name ?? null,
+    subjectColor: subject?.color ?? null,
+    childId: assignment.child_id,
+    childName: child?.name ?? null,
+    childColor: child?.color ?? null,
+    childAvatarUrl: child?.avatar_url ?? null,
+  };
 }

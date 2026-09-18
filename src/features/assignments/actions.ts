@@ -485,6 +485,65 @@ export async function startAssignmentAction(
   return ok(null);
 }
 
+/**
+ * `assigned -> in_progress`, fired by the child merely OPENING the assignment.
+ *
+ * The child is plainly working on it — that is why the page is on screen — so
+ * making them declare it first was friction that taught nothing, and the
+ * distinction between `assigned` and `in_progress` is information the parent
+ * wants without the child having to volunteer it. `/kid/assignments/[id]` now
+ * calls this once on mount instead of rendering a „დაწყება" button.
+ *
+ * Three properties matter, and each is enforced here rather than in the caller:
+ *
+ *  - IDEMPOTENT. `.eq("status", "assigned")` is part of the UPDATE, so two tabs
+ *    (or a refresh that beats the effect guard) race to the same single row
+ *    change. The loser affects zero rows and reports `started: false`, and
+ *    `assignment_events` therefore records exactly one transition.
+ *  - NARROW. Only `assigned` moves. `redo`, `in_progress`, `submitted` and
+ *    `approved` are left exactly as they are — opening a page must never be
+ *    what reopens reviewed work.
+ *  - SILENT. Every failure returns `ok({ started: false })`. The child did not
+ *    ask for this and must never see an error for it; the page renders the
+ *    same either way. Real faults are logged server-side.
+ */
+export async function autoStartAssignmentAction(
+  input: z.input<typeof idSchema>,
+): Promise<ActionResult<{ started: boolean }>> {
+  const notStarted = ok({ started: false });
+
+  const child = await requireChild();
+
+  const parsed = idSchema.safeParse(input);
+  if (!parsed.success) return notStarted;
+
+  const supabase = await createClient();
+  const caller: Caller = { role: "child", session: child };
+
+  const existing = await loadAssignment(
+    supabase,
+    caller,
+    parsed.data.assignmentId,
+  );
+  if (!existing || existing.status !== "assigned") return notStarted;
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .update({ status: "in_progress" })
+    .eq("id", existing.id)
+    .eq("status", "assigned")
+    .select("id");
+
+  if (error) {
+    logDbError("assignments.autoStart", error);
+    return notStarted;
+  }
+  if (noRowsAffected(data)) return notStarted;
+
+  revalidateAssignment(existing.id, existing.childId);
+  return ok({ started: true });
+}
+
 const submitSchema = z.object({
   assignmentId: z.uuid(),
   selfRating: z.number().int().min(1, ka.validation.ratingRange).max(5, ka.validation.ratingRange).nullable(),
@@ -525,6 +584,12 @@ export async function submitAssignmentAction(
   }
 
   // Submitting with nothing to look at wastes the parent's time.
+  //
+  // "Something to look at" is no longer the same as "a photo": a large share of
+  // primary-school homework is oral — learn a poem, read a passage aloud — and
+  // a recording is the only honest evidence of it. The `kind = 'solution'`
+  // count is therefore deliberately NOT narrowed by mime: one photo, or one
+  // recording, or any mixture, is a submission.
   const { count } = await supabase
     .from("attachments")
     .select("id", { count: "exact", head: true })
@@ -532,7 +597,7 @@ export async function submitAssignmentAction(
     .eq("kind", "solution");
 
   if ((count ?? 0) === 0) {
-    return fail(ka.assignments.errNoSolutionPhotos);
+    return fail(ka.assignments.errNoSolutionEvidence);
   }
 
   // `redo` cannot go straight to `submitted`; the machine routes it through

@@ -18,12 +18,13 @@ import { isWellFormedEvidencePath } from "@/features/attachments/paths";
 import { getSignedUrls } from "@/features/attachments/signed-urls";
 import { removeObjects, statObject } from "@/features/attachments/storage";
 import { fail, ok, type ActionResult } from "@/lib/auth/result";
+import { getSessionUser } from "@/lib/auth/session";
 import { ka } from "@/lib/i18n/ka";
 import { MAX_UPLOAD_BYTES, isAllowedImageMime } from "@/lib/images";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, type ServerClient } from "@/lib/supabase/server";
 
-import { getAssignmentThread } from "./queries";
-import type { ThreadSlice } from "./types";
+import { getAssignmentThread, getChatThreads } from "./queries";
+import type { ChatThreadSummary, ThreadSlice } from "./types";
 
 const MAX_BODY_LENGTH = 4000;
 const MAX_IMAGES_PER_MESSAGE = 4;
@@ -188,7 +189,15 @@ export async function markThreadReadAction(
     .limit(500);
 
   const ids = (messages ?? []).map((row) => row.id);
-  if (ids.length === 0) return ok(null);
+  if (ids.length === 0) {
+    // Still worth clearing the bell: a `message_posted` row can outlive the
+    // messages it collapsed (an edit, a deleted message), and a bell that
+    // insists on unread mail the chat screen says is read is the single most
+    // annoying thing an inbox can do.
+    await clearMessageNotifications(supabase, caller.session.id, assignment.id);
+    revalidateThread(assignment.id);
+    return ok(null);
+  }
 
   const { error } = await supabase.from("message_reads").upsert(
     ids.map((messageId) => ({
@@ -203,8 +212,55 @@ export async function markThreadReadAction(
     return fail(ka.errors.generic);
   }
 
+  await clearMessageNotifications(supabase, caller.session.id, assignment.id);
+
   revalidateThread(assignment.id);
   return ok(null);
+}
+
+/**
+ * The bell and the chat screen count different things — `notifications` rows
+ * against `message_reads` rows — so reading a thread has to settle both or the
+ * two disagree for as long as the bell's row sits there.
+ *
+ * Only `message_posted` rows are touched: "your child submitted something" is
+ * not answered by reading the chat, and clearing it here would hide work.
+ * Ownership is enforced twice, by `user_id` here and by the `user_id =
+ * auth.uid()` policy underneath, and a failure is deliberately swallowed —
+ * marking the thread itself read is the part the user asked for.
+ */
+async function clearMessageNotifications(
+  supabase: ServerClient,
+  userId: string,
+  assignmentId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("type", "message_posted")
+    .is("read_at", null)
+    // `payload` is jsonb; `->>` is the only way to reach inside it from
+    // PostgREST, and `filter` is the typed escape hatch for a non-column key.
+    .filter("payload->>assignment_id", "eq", assignmentId);
+
+  if (error) logDbError("messages.clearNotifications", error);
+}
+
+/**
+ * Every thread the caller can see, for the live list on `/parent/chat`.
+ *
+ * Returns `null` rather than `[]` when nobody is signed in, so the browser can
+ * tell "you have no conversations" from "your session went away" and keep what
+ * is on screen — the same contract as `getThreadSliceAction` above. No input to
+ * validate: the answer is whatever RLS says this user may read.
+ */
+export async function listChatThreadsAction(): Promise<
+  ChatThreadSummary[] | null
+> {
+  const user = await getSessionUser();
+  if (!user) return null;
+  return getChatThreads();
 }
 
 function revalidateThread(assignmentId: string): void {
@@ -213,4 +269,7 @@ function revalidateThread(assignmentId: string): void {
   revalidatePath("/kid/chat");
   revalidatePath("/kid/assignments");
   revalidatePath("/parent/inbox");
+  // The parent chat list lives in a layout, so the whole segment has to go —
+  // revalidating the page alone would leave a stale unread badge in the list.
+  revalidatePath("/parent/chat", "layout");
 }

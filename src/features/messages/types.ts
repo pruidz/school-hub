@@ -8,7 +8,7 @@
  * `server-only` guard) into the browser bundle.
  */
 
-import type { Attachment } from "@/lib/db.types";
+import type { AssignmentStatus, Attachment } from "@/lib/db.types";
 
 export type ThreadMessage = {
   id: string;
@@ -36,6 +36,50 @@ export type Thread = {
  */
 export type ThreadSlice = Thread & {
   urls: Record<string, string>;
+};
+
+/** What the last message in a thread was, when it carries no text. */
+export type ChatMessageKind = "text" | "photo" | "voice";
+
+/**
+ * One row of a conversation list — `/kid/chat` and `/parent/chat` render the
+ * same shape. Lives here rather than beside the query that builds it because
+ * the parent's list is a Client Component and must be able to `import type` it
+ * without pulling `queries.ts` and its `server-only` guard into the bundle.
+ */
+export type ChatThreadSummary = {
+  assignmentId: string;
+  title: string;
+  /** Live or finished? The list shows it, so closed threads can be skipped. */
+  status: AssignmentStatus;
+  subjectName: string | null;
+  subjectColor: string | null;
+  childId: string | null;
+  childName: string | null;
+  childColor: string | null;
+  childAvatarUrl: string | null;
+  lastMessageAt: string;
+  lastMessagePreview: string;
+  lastMessageKind: ChatMessageKind;
+  lastMessageAuthorId: string | null;
+  lastMessageAuthorName: string | null;
+  lastMessageIsMine: boolean;
+  unreadCount: number;
+  messageCount: number;
+};
+
+/** The header of one thread: what it hangs off and where it links through to. */
+export type ThreadContext = {
+  assignmentId: string;
+  title: string;
+  status: AssignmentStatus;
+  dueDate: string | null;
+  subjectName: string | null;
+  subjectColor: string | null;
+  childId: string;
+  childName: string | null;
+  childColor: string | null;
+  childAvatarUrl: string | null;
 };
 
 /**

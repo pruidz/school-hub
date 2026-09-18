@@ -28,7 +28,12 @@ import { logDbError, uploadErrorMessage } from "@/features/assignments/errors";
 import { fail, ok, type ActionResult } from "@/lib/auth/result";
 import type { Attachment } from "@/lib/db.types";
 import { ka } from "@/lib/i18n/ka";
-import { MAX_UPLOAD_BYTES, isAllowedImageMime } from "@/lib/images";
+import {
+  MAX_AUDIO_BYTES,
+  MAX_UPLOAD_BYTES,
+  isAllowedAudioMime,
+  isAllowedImageMime,
+} from "@/lib/images";
 import { createClient, type ServerClient } from "@/lib/supabase/server";
 
 import {
@@ -142,16 +147,29 @@ export async function registerAttachmentAction(
   }
 
   // ---- server-side size / mime enforcement on the REAL object ----------------
+  //
+  // Both checks run against what Storage actually holds, never against the
+  // JSON the browser sent: `mime` and `sizeBytes` in the payload are a claim,
+  // and a hand-rolled request would simply claim something allowed. Audio gets
+  // its own ceiling because it is stored as recorded — `compressImage` never
+  // touches it — so the ~300 KB a photo lands at is not a useful yardstick.
   const fact = await statObject(supabase, storagePath);
   if (!fact) return fail(ka.attachments.errUploadFailed);
 
-  if (fact.sizeBytes > MAX_UPLOAD_BYTES) {
-    await removeObjects(supabase, [storagePath]);
-    return fail(ka.attachments.errTooLarge);
-  }
-  if (!isAllowedImageMime(fact.mime)) {
+  const isImage = isAllowedImageMime(fact.mime);
+  const isAudio = !isImage && isAllowedAudioMime(fact.mime);
+
+  if (!isImage && !isAudio) {
     await removeObjects(supabase, [storagePath]);
     return fail(ka.attachments.errBadType);
+  }
+
+  const sizeCeiling = isAudio ? MAX_AUDIO_BYTES : MAX_UPLOAD_BYTES;
+  if (fact.sizeBytes > sizeCeiling) {
+    await removeObjects(supabase, [storagePath]);
+    return fail(
+      isAudio ? ka.attachments.errAudioTooLarge : ka.attachments.errTooLarge,
+    );
   }
 
   const attachmentKind =
@@ -187,8 +205,10 @@ export async function registerAttachmentAction(
       storage_path: storagePath,
       mime: fact.mime,
       size_bytes: fact.sizeBytes,
-      width: parsed.data.width ?? null,
-      height: parsed.data.height ?? null,
+      // A recording has no pixel size. Storing one would be a lie the gallery
+      // would later use to lay out a tile for something that is not an image.
+      width: isAudio ? null : (parsed.data.width ?? null),
+      height: isAudio ? null : (parsed.data.height ?? null),
       sort_order: parsed.data.sortOrder ?? (count ?? 0),
     })
     .select("*")

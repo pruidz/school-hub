@@ -59,6 +59,7 @@ export {
 
 export {
   approveAssignmentAction,
+  autoStartAssignmentAction,
   createAssignmentAction,
   createAssignmentAsChildAction,
   deleteAssignmentAction,

@@ -9,6 +9,27 @@
 
 export { PhotoUploader, type PhotoUploaderProps } from "./photo-uploader";
 export { PhotoGallery, type PhotoGalleryProps } from "./photo-gallery";
+export {
+  AudioRecorder,
+  DEFAULT_MAX_RECORDINGS,
+  type AudioRecorderProps,
+} from "./audio-recorder";
+export {
+  AudioEvidence,
+  AudioEvidenceList,
+  type AudioEvidenceListProps,
+} from "./audio-player";
+export {
+  EvidenceGallery,
+  type EvidenceGalleryProps,
+} from "./evidence-gallery";
+export {
+  isAudioAttachment,
+  isImageAttachment,
+  orderEvidence,
+  splitEvidence,
+  type SplitEvidence,
+} from "./audio";
 export { getSignedUrl, getSignedUrls } from "./signed-urls";
 export {
   deleteAttachmentAction,

@@ -19,6 +19,7 @@ import type {
   ChildUiMode,
 } from "@/lib/db.types";
 import { createClient, type ServerClient } from "@/lib/supabase/server";
+import { splitEvidence } from "@/features/attachments/audio";
 import { addDaysIso, isoWeekday } from "@/features/schedule/dates";
 
 import { todayString, weekBounds } from "./dates";
@@ -152,8 +153,12 @@ export type InboxItem = {
   assignment: Assignment;
   child: ChildLite | null;
   subject: SubjectLite | null;
+  /** First solution PHOTO. Null for a submission that is only a recording. */
   thumbnailPath: string | null;
   solutionCount: number;
+  /** Lets the row say "this one has to be listened to" instead of showing a
+   *  broken tile where a thumbnail would be. */
+  recordingCount: number;
 };
 
 export type InboxData = {
@@ -214,14 +219,19 @@ export async function getInbox(filters: {
       (file) =>
         file.assignment_id === assignment.id && file.kind === "solution",
     );
+    // A recording has no thumbnail, so taking solutions[0] blindly would show
+    // the ImageOff placeholder for a perfectly good submission.
+    const { photos, recordings } = splitEvidence(solutions);
+
     return {
       assignment,
       child: childById.get(assignment.child_id) ?? null,
       subject: assignment.subject_id
         ? (subjectById.get(assignment.subject_id) ?? null)
         : null,
-      thumbnailPath: solutions[0]?.storage_path ?? null,
+      thumbnailPath: photos[0]?.storage_path ?? null,
       solutionCount: solutions.length,
+      recordingCount: recordings.length,
     };
   });
 

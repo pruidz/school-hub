@@ -20,6 +20,26 @@ export const IMAGE_TARGET_BYTES = 300 * 1024;
 /** Hard ceiling, matching the `evidence` bucket's `file_size_limit`. */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Hard ceiling for a recording. Deliberately the same 10 MB as the bucket, and
+ * that is a real limit rather than a formality:
+ *
+ *   - every mime in {@link ALLOWED_AUDIO_MIME} is a COMPRESSED format. A phone
+ *     recorder writing uncompressed WAV is rejected on type long before size
+ *     matters, so 10 MB cannot buy a few seconds of PCM;
+ *   - at the 128 kbps a phone recorder tops out at, 10 MB is about ten minutes.
+ *     A recited poem or a read passage is one to three minutes. The cap is
+ *     therefore several times the real need and still refuses a recording that
+ *     was plainly left running;
+ *   - it matches `storage.buckets.file_size_limit`, so Storage refuses the body
+ *     mid-upload and the server never has to trust a client-declared size.
+ *
+ * Audio is NOT compressed in the browser: re-encoding costs battery, loses
+ * quality and — worse — differs per device, which is exactly the class of bug
+ * the file-input recording path exists to avoid.
+ */
+export const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+
 /** Largest file we will even try to decode in the browser. */
 export const MAX_SOURCE_BYTES = 40 * 1024 * 1024;
 
@@ -52,6 +72,89 @@ export function isAllowedImageMime(mime: string | null | undefined): boolean {
 
 export function isAllowedAudioMime(mime: string | null | undefined): boolean {
   return (ALLOWED_AUDIO_MIME as readonly string[]).includes(normalizeMime(mime));
+}
+
+/**
+ * Aliases a phone hands us for a container that IS already on the allowlist.
+ *
+ * `<input type="file" accept="audio/*" capture>` returns whatever the recorder
+ * app labelled the file with, and the labels are not canonical: iOS Voice Memos
+ * produces `audio/x-m4a` for an MP4 container, and several Android recorders
+ * say `audio/mp3` for what is an MPEG frame stream. Both are the same bytes as
+ * the canonical type, so they are renamed rather than refused.
+ *
+ * Only exact container synonyms belong here. A format that decodes differently
+ * (`audio/aac` raw ADTS, `audio/amr`, `audio/wav`) is NOT mapped: calling it
+ * `audio/mp4` would store a file the browser then refuses to play, which is a
+ * worse failure than an honest refusal at pick time.
+ */
+const AUDIO_MIME_ALIASES: Readonly<Record<string, string>> = {
+  "audio/x-m4a": "audio/mp4",
+  "audio/m4a": "audio/mp4",
+  "audio/mp4a-latm": "audio/mp4",
+  "audio/mp3": "audio/mpeg",
+  "audio/x-mp3": "audio/mpeg",
+  "audio/mpeg3": "audio/mpeg",
+  "audio/x-mpeg-3": "audio/mpeg",
+  "audio/x-ogg": "audio/ogg",
+  "audio/x-webm": "audio/webm",
+};
+
+/** Last resort when the picker reports no type at all (iOS sometimes does). */
+const AUDIO_EXTENSION_MIME: Readonly<Record<string, string>> = {
+  m4a: "audio/mp4",
+  mp4: "audio/mp4",
+  mp3: "audio/mpeg",
+  oga: "audio/ogg",
+  ogg: "audio/ogg",
+  opus: "audio/ogg",
+  webm: "audio/webm",
+};
+
+/**
+ * The canonical, allowlisted mime for a recording, or `null` when the file is
+ * not something we are willing to store.
+ *
+ * Everything that reaches Storage is labelled with the value this returns, so
+ * the bucket's `allowed_mime_types` and {@link ALLOWED_AUDIO_MIME} only ever
+ * have to know the four canonical names.
+ */
+export function canonicalAudioMime(
+  mime: string | null | undefined,
+  fileName?: string,
+): string | null {
+  const normalized = normalizeMime(mime);
+  const aliased = AUDIO_MIME_ALIASES[normalized] ?? normalized;
+  if (isAllowedAudioMime(aliased)) return aliased;
+
+  const extension = /\.([a-z0-9]+)$/i.exec(fileName ?? "")?.[1]?.toLowerCase();
+  const fromExtension = extension
+    ? AUDIO_EXTENSION_MIME[extension]
+    : undefined;
+
+  return fromExtension && isAllowedAudioMime(fromExtension)
+    ? fromExtension
+    : null;
+}
+
+/** Picker-side counterpart of {@link looksLikeImage}. */
+export function looksLikeAudio(file: File): boolean {
+  return canonicalAudioMime(file.type, file.name) !== null;
+}
+
+/** `m:ss`, or `—` while `<audio>` has not reported a usable duration yet. */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (
+    seconds === null ||
+    seconds === undefined ||
+    !Number.isFinite(seconds) ||
+    seconds < 0
+  ) {
+    return "—";
+  }
+  const whole = Math.round(seconds);
+  const minutes = Math.floor(whole / 60);
+  return `${minutes}:${String(whole % 60).padStart(2, "0")}`;
 }
 
 export function isAllowedUploadMime(mime: string | null | undefined): boolean {

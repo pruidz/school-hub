@@ -32,6 +32,7 @@ export type NavItem = {
 export const parentNavItems: NavItem[] = [
   { href: "/parent", label: ka.nav.dashboard, icon: LayoutDashboard, exact: true },
   { href: "/parent/inbox", label: ka.nav.inbox, icon: Inbox },
+  { href: "/parent/chat", label: ka.nav.chat, icon: MessageCircle },
   { href: "/parent/assignments", label: ka.assignments.title, icon: ClipboardList },
   { href: "/parent/children", label: ka.nav.children, icon: Users },
   { href: "/parent/helpers", label: ka.helpers.title, icon: UserPlus },

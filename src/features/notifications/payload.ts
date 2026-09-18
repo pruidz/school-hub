@@ -64,10 +64,18 @@ export function notificationHref(item: NotificationItem): string | null {
   const { assignmentId, audience } = item.payload;
   if (!assignmentId) return null;
 
+  // The child has no per-thread route — `/kid/chat` is a list — and the thread
+  // is rendered on the assignment page anyway, so everything goes there.
   if (audience === "child") return `/kid/assignments/${assignmentId}`;
 
+  // A message goes to the thread, so that opening the notification also clears
+  // the unread messages behind it. Sending it to the assignment page would mark
+  // the notification read and leave the thread unread — two counters
+  // disagreeing, which is worse than no badge.
+  if (item.type === "message_posted") return `/parent/chat/${assignmentId}`;
+
   // A parent reviewing submitted work lands on the review screen; anything
-  // else (a message on work that is not in review) lands on the assignment.
+  // else lands on the assignment.
   return item.type === "assignment_submitted"
     ? `/parent/review/${assignmentId}`
     : `/parent/assignments/${assignmentId}`;

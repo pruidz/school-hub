@@ -10,11 +10,15 @@ import {
 } from "@/features/assignments/dates";
 import { getKidAssignmentDetail } from "@/features/assignments/queries";
 import { AssignmentStatusBadge } from "@/features/assignments/status-badge";
+import { splitEvidence } from "@/features/attachments/audio";
+import { AudioRecorder } from "@/features/attachments/audio-recorder";
+import { EvidenceGallery } from "@/features/attachments/evidence-gallery";
 import { PhotoGallery } from "@/features/attachments/photo-gallery";
 import { PhotoUploader } from "@/features/attachments/photo-uploader";
 import { MessageThread } from "@/features/messages/message-thread";
 import { ka, t } from "@/lib/i18n/ka";
 
+import { AutoStartAssignment } from "./auto-start";
 import { SubmitPanel } from "./submit-panel";
 
 export const metadata: Metadata = { title: ka.kid.assignmentsTitle };
@@ -49,8 +53,19 @@ export default async function KidAssignmentPage({
   const locked =
     assignment.status === "submitted" || assignment.status === "approved";
 
+  // The two uploaders keep separate budgets: six photos of a maths page and
+  // three takes of a poem are different things to run out of.
+  const { photos: solutionPhotos, recordings: solutionRecordings } =
+    splitEvidence(solutionAttachments);
+
   return (
     <div className="grid gap-4 pb-8">
+      {/* Renders nothing. Opening the page is what starts the work. */}
+      <AutoStartAssignment
+        assignmentId={assignment.id}
+        status={assignment.status}
+      />
+
       <Button asChild variant="ghost" size="sm" className="justify-self-start">
         <Link href="/kid/assignments">
           <ChevronLeft />
@@ -120,22 +135,41 @@ export default async function KidAssignmentPage({
 
       <section className="grid gap-3 rounded-xl border bg-card p-3">
         <h2 className="font-medium">{ka.kid.yourWork}</h2>
-        <PhotoGallery
+        <EvidenceGallery
           attachments={solutionAttachments}
           zoom
-          emptyLabel={ka.attachments.noPhotos}
+          emptyLabel={ka.attachments.noEvidence}
         />
+
         {!locked ? (
-          <PhotoUploader
-            target={{
-              kind: "assignment",
-              assignmentId: assignment.id,
-              childId,
-              attachmentKind: "solution",
-            }}
-            existingCount={solutionAttachments.length}
-            label={ka.attachments.addPhotos}
-          />
+          <>
+            <PhotoUploader
+              target={{
+                kind: "assignment",
+                assignmentId: assignment.id,
+                childId,
+                attachmentKind: "solution",
+              }}
+              existingCount={solutionPhotos.length}
+              label={ka.attachments.addPhotos}
+            />
+
+            {/* Oral homework — a poem, a passage read aloud, pronunciation —
+                has no page to photograph. Same section, not a separate screen:
+                one piece of work, one place to hand it in. */}
+            <div className="border-t pt-3">
+              <AudioRecorder
+                target={{
+                  kind: "assignment",
+                  assignmentId: assignment.id,
+                  childId,
+                  attachmentKind: "solution",
+                }}
+                existingCount={solutionRecordings.length}
+                label={ka.kid.yourRecording}
+              />
+            </div>
+          </>
         ) : null}
       </section>
 

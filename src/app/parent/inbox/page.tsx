@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCircle2, ImageOff } from "lucide-react";
+import { CheckCircle2, Headphones, ImageOff } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { formatWaitedFor, formatDueLabel } from "@/features/assignments/dates";
@@ -107,7 +107,13 @@ export default async function ParentInboxPage({
         </Card>
       ) : (
         <ul className="grid gap-3">
-          {items.map(({ assignment, child, subject, thumbnailPath }) => {
+          {items.map(({
+            assignment,
+            child,
+            subject,
+            thumbnailPath,
+            recordingCount,
+          }) => {
             const url = thumbnailPath ? urls[thumbnailPath] : null;
             const unreadCount = unread[assignment.id] ?? 0;
 
@@ -125,6 +131,12 @@ export default async function ParentInboxPage({
                         alt=""
                         loading="lazy"
                         className="size-full object-cover"
+                      />
+                    ) : recordingCount > 0 ? (
+                      // Oral homework: nothing to show, something to hear.
+                      <Headphones
+                        className="size-6 text-primary"
+                        aria-label={ka.attachments.recording}
                       />
                     ) : (
                       <ImageOff className="size-5 text-muted-foreground" />

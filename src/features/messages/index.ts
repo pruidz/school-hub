@@ -11,22 +11,30 @@ export { MessageBubble } from "./message-bubble";
 export { ThreadComposer, type ThreadComposerProps } from "./thread-composer";
 export { MarkThreadRead } from "./mark-thread-read";
 
+/** The parent's messenger (`/parent/chat`). Both are Client Components. */
+export { ChatPanes } from "./chat-panes";
+export { ThreadList } from "./thread-list";
+
 export {
   getAssignmentThread,
   getChatThreads,
+  getThreadContext,
   getUnreadCounts,
-  type ChatThreadSummary,
 } from "./queries";
 
 export type {
+  ChatMessageKind,
+  ChatThreadSummary,
   PendingMessage,
   Thread,
+  ThreadContext,
   ThreadMessage,
   ThreadSlice,
 } from "./types";
 
 export {
   getThreadSliceAction,
+  listChatThreadsAction,
   markThreadReadAction,
   sendMessageAction,
   type SendMessageInput,

@@ -107,6 +107,12 @@ export const ka = {
     errNoSolutionPhotos: "ჩასაბარებლად საჭიროა მინიმუმ ერთი ფოტო ამოხსნისა",
     errSaveFailed: "დავალება ვერ შეინახა",
     errDeleteFailed: "დავალება ვერ წაიშალა",
+
+    // oral homework: evidence may be a photo OR a recording. The photo-only
+    // wording above is kept for anything that still means literally a photo.
+    solutionEvidence: "ამოხსნა",
+    errNoSolutionEvidence:
+      "ჩასაბარებლად საჭიროა მინიმუმ ერთი ფოტო ან ხმოვანი ჩანაწერი",
   },
 
   // --------------------------------------------------------- attachments ---
@@ -148,6 +154,30 @@ export const ka = {
     errCompressFailed: "სურათი ვერ დამუშავდა",
     errDeleteFailed: "ფოტო ვერ წაიშალა",
     errTooManyFiles: "ერთდროულად მაქსიმუმ {count} ფაილი",
+
+    // audio evidence — oral homework (learn a poem, read aloud, pronunciation)
+    recordAudio: "ხმის ჩაწერა",
+    recordHere: "აქვე ჩაწერა",
+    recordAudioHint:
+      "თქვი ან წაიკითხე ხმამაღლა — ტელეფონი ჩაწერს და ჩანაწერი დაერთვება",
+    stopRecording: "გაჩერება · {duration}",
+    recording: "ხმოვანი ჩანაწერი",
+    recordings: "ხმოვანი ჩანაწერები",
+    recordingIndex: "ჩანაწერი {index} / {total}",
+    recordingLimitReached: "მაქსიმუმ {count} ჩანაწერია დაშვებული",
+    removeRecording: "ჩანაწერის წაშლა",
+    loadingAudio: "ჩანაწერი იტვირთება…",
+    audioUnavailable: "ჩანაწერი ვერ ჩაიტვირთა",
+    noEvidence: "ამოხსნა ჯერ არ არის",
+    recorderUnavailable:
+      "ბრაუზერში ჩაწერა ვერ მოხერხდა — დააჭირე „ხმის ჩაწერას“ და ტელეფონი ჩაწერს",
+    deleteRecordingConfirmTitle: "წავშალოთ ჩანაწერი?",
+    deleteRecordingConfirmBody:
+      "ჩანაწერი სამუდამოდ წაიშლება. საჭიროების შემთხვევაში თავიდან ჩაწერე.",
+
+    errNotAudio: "აირჩიე ხმოვანი ჩანაწერი (m4a, mp3, ogg ან webm)",
+    errAudioTooLarge: "ჩანაწერი ძალიან დიდია — მაქსიმუმ 10 MB",
+    errEmptyRecording: "ჩანაწერი ცარიელია — სცადე თავიდან",
   },
 
   // ---------------------------------------------------------------- auth ---
@@ -601,6 +631,9 @@ export const ka = {
     startWork: "დაწყება",
     submitWork: "ჩაბარება",
     needSolutionPhoto: "ჯერ ატვირთე ამოხსნის ფოტო — ერთი მაინც",
+    // oral homework: a photo is no longer the only way to hand work in
+    needSolutionEvidence: "ჯერ დაურთე ამოხსნა — ფოტო ან ხმოვანი ჩანაწერი",
+    yourRecording: "ზეპირი დავალება",
     howWasIt: "რამდენად გაიგე?",
     rating1: "ვერაფერი გავიგე",
     rating2: "ცოტა გავიგე",
@@ -692,6 +725,28 @@ export const ka = {
     // phase 2 — realtime
     dismissFailed: "მოცილება",
     liveOffline: "კავშირი შეწყვეტილია — განახლდება ავტომატურად",
+
+    // phase 3 — /parent/chat, the parent's messenger
+    parentChatTitle: "მიმოწერა",
+    threadListTitle: "საუბრები",
+    threadCount: "{count} საუბარი",
+    threadUnreadTotal: "{count} წაუკითხავი",
+    photoMessage: "ფოტო",
+    pickThread: "აირჩიე საუბარი",
+    pickThreadHint: "სიიდან აირჩიე დავალება — მიმოწერა აქ გაიხსნება",
+    backToThreads: "საუბრებში დაბრუნება",
+    filterChild: "ბავშვი",
+    filterAllChildren: "ყველა ბავშვი",
+    filterUnreadOnly: "მხოლოდ წაუკითხავი",
+    noThreads: "მიმოწერა ჯერ არ დაწყებულა",
+    noThreadsHint: "საუბარი კონკრეტულ დავალებაზე იწყება — დაწერე პირველი შეტყობინება დავალების გვერდიდან",
+    noUnread: "წაუკითხავი არაფერია",
+    noUnreadHint: "ყველა საუბარი წაკითხულია",
+    noMatches: "ამ ფილტრით საუბარი არ არის",
+    noMatchesHint: "შეცვალე ბავშვი ან გამორთე ფილტრი",
+    openReview: "შემოწმების გვერდზე გადასვლა",
+    openAssignment: "დავალების გვერდზე გადასვლა",
+    threadNotFound: "საუბარი ვერ მოიძებნა",
   },
 
   // ----------------------------------------------------------------- nav ---
@@ -699,6 +754,7 @@ export const ka = {
     // parent
     dashboard: "დაფა",
     inbox: "შესამოწმებელი",
+    chat: "მიმოწერა",
     children: "ბავშვები",
     schedule: "ცხრილი",
     subjects: "საგნები",
@@ -908,6 +964,10 @@ export const ka = {
     reopenedOk: "დავალება ხელახლა გაიხსნა",
     noTaskPhotos: "დავალების ფოტო არ არის",
     noSolutionPhotos: "ამოხსნის ფოტო არ არის",
+    // solution evidence may now be a recording, so the empty state cannot
+    // promise a photo
+    noSolutionEvidence: "ამოხსნა ჯერ არ არის — არც ფოტო, არც ჩანაწერი",
+    listenHint: "ზეპირი დავალება — მოუსმინე და შემდეგ შეაფასე",
   },
 
   // ------------------------------------------------------------ schedule ---

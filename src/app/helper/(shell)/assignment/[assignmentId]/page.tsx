@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { AssignmentStatusBadge } from "@/features/assignments/status-badge";
 import { formatLongDate } from "@/features/assignments/dates";
+import { EvidenceGallery } from "@/features/attachments/evidence-gallery";
 import { PhotoGallery } from "@/features/attachments/photo-gallery";
 import { getHelperAssignment } from "@/features/helpers/queries";
 import {
@@ -88,12 +89,14 @@ export default async function HelperAssignmentPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>{ka.assignments.solutionPhotos}</CardTitle>
+            <CardTitle>{ka.assignments.solutionEvidence}</CardTitle>
           </CardHeader>
           <CardContent>
-            <PhotoGallery
+            {/* A helper reviewing oral homework needs to hear it, so this
+                pane carries recordings as well as photos. */}
+            <EvidenceGallery
               attachments={assignment.solutionPhotos}
-              emptyLabel={ka.review.noSolutionPhotos}
+              emptyLabel={ka.review.noSolutionEvidence}
             />
           </CardContent>
         </Card>
