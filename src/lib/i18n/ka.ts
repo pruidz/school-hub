@@ -498,6 +498,7 @@ export const ka = {
     children: "ბავშვები",
     schedule: "ცხრილი",
     subjects: "საგნები",
+    reports: "რეპორტი",
     settings: "პარამეტრები",
     // kid
     kidToday: "დღეს",
@@ -544,6 +545,111 @@ export const ka = {
     appShortName: "სკოლა",
     offlineTitle: "ინტერნეტი გათიშულია",
     offlineBody: "შეამოწმე კავშირი და სცადე თავიდან.",
+  },
+
+  // ------------------------------------------------------------- reports ---
+  reports: {
+    // page chrome
+    title: "რეპორტი",
+    subtitle: "სწავლის ხარისხი, და არა მხოლოდ შესრულების პროცენტი",
+    hint: "ყველა რიცხვი დაწკაპუნებადია — იხსნება ზუსტად ის სია, საიდანაც ის დაითვალა",
+
+    // window picker
+    windowLabel: "პერიოდი",
+    windowWeek: "ეს კვირა",
+    window4Weeks: "ბოლო 4 კვირა",
+    windowTerm: "ეს სემესტრი",
+    range: "{from} — {to}",
+    previousLabel: "წინა პერიოდი: {value}",
+    previousNone: "წინა პერიოდი: მონაცემის გარეშე",
+    trendBetter: "უმჯობესდება",
+    trendWorse: "უარესდება",
+    trendFlat: "უცვლელი",
+
+    // headline numbers
+    completion: "შესრულება",
+    completionHint: "დადასტურებული ÷ სულ",
+    onTime: "ვადაში ჩაბარება",
+    onTimeHint: "დადასტურებულიდან ვადაში ჩაბარებული",
+    redoRate: "გადაკეთების წილი",
+    redoRateHint: "მთავარი ხარისხის მაჩვენებელი — რამდენი დაბრუნდა",
+    medianMinutes: "დრო დავალებაზე",
+    medianMinutesHint: "მედიანა, წუთებში",
+    avgSelfRating: "საშუალო თვითშეფასება",
+    avgSelfRatingHint: "ბავშვის შეფასება 1–5",
+    ofFive: "{value} / 5",
+    countOf: "{part} / {total}",
+    basedOn: "{count} დავალება",
+
+    // small samples
+    lowSampleTitle: "მცირე შერჩევა",
+    lowSampleNote:
+      "ამ პერიოდში სულ {count} დავალებაა. ასეთ რაოდენობაზე პროცენტი შემთხვევითობას ასახავს და არა ტენდენციას, ამიტომ მხოლოდ რიცხვებია ნაჩვენები.",
+    lowSampleBadge: "ცოტა მონაცემია",
+
+    // by subject
+    bySubject: "საგნების მიხედვით",
+    bySubjectHint: "ყველაზე პრობლემური საგანი — პირველი",
+    weakestTitle: "ყველაზე მეტ ყურადღებას საჭიროებს: {subject}",
+    weakestBody: "{returned} დაბრუნებული {total} დავალებიდან, შესრულება {completion}",
+    weakestBadge: "ყველაზე სუსტი",
+    colSubject: "საგანი",
+    colTotal: "სულ",
+    colCompletion: "შესრულება",
+    colOnTime: "ვადაში",
+    colRedo: "გადაკეთება",
+    colMinutes: "წთ",
+    colRating: "თვითშეფასება",
+    noSubject: "საგნის გარეშე",
+    subjectsEmpty: "ამ პერიოდში საგნების მიხედვით მონაცემი არ არის",
+
+    // weak topics
+    weakTopics: "სუსტი თემები",
+    weakTopicsByRedo: "ყველაზე ხშირად ბრუნდება",
+    weakTopicsByRating: "ყველაზე დაბალი თვითშეფასება",
+    topicSamples: "{count} დავალება",
+    topicReturned: "{count} დაბრუნებული",
+    topicsEmpty: "სუსტი თემა ამ პერიოდში არ გამოიკვეთა",
+    topicsFloorNote:
+      "თემა სიაში ხვდება მხოლოდ მაშინ, თუ მასზე მინიმუმ 2 დავალებაა — ერთი ცუდი დღე ტენდენცია არ არის.",
+    unknownTopic: "უსახელო თემა",
+
+    // trend
+    trend: "დინამიკა — ბოლო 8 კვირა",
+    trendHint: "ზემოთ შესრულება, ქვემოთ გადაკეთება",
+    trendCompletion: "შესრულება",
+    trendRedo: "გადაკეთება",
+    trendAria: "შესრულებისა და გადაკეთების კვირეული დინამიკა, ბოლო 8 კვირა",
+    trendWeekSummary:
+      "{from}–{to}: {approved}/{total} დადასტურებული, {returned} დაბრუნებული",
+    trendWeekEmpty: "{from}–{to}: დავალების გარეშე",
+    trendEmpty: "დინამიკისთვის ჯერ საკმარისი მონაცემი არ არის",
+
+    // recent returns
+    recentReturns: "ბოლო დაბრუნებები",
+    recentReturnsHint: "კომენტარი ხშირად უფრო მეტს ამბობს, ვიდრე პროცენტი",
+    recentReturnsEmpty: "ამ პერიოდში დავალება არ დაბრუნებულა — კარგი ნიშანია",
+    noComment: "კომენტარის გარეშე",
+
+    // empty states
+    emptyTitle: "რეპორტისთვის მონაცემი ჯერ არ არის",
+    emptyBody:
+      "დაამატეთ პირველი დავალებები და შეამოწმეთ ისინი. უკვე ერთი-ორი კვირის შემდეგ აქ დაინახავთ სად არის ყველაზე მეტი გადაკეთება, რომელ საგანზე იკარგება დრო და რომელი თემა არ არის ათვისებული.",
+    emptyWindowTitle: "ამ პერიოდში დავალება არ ყოფილა",
+    emptyWindowBody: "აირჩიეთ უფრო ფართო პერიოდი ან დაამატეთ დავალება.",
+
+    // drill-down list
+    listTitle: "რეპორტის ამონაწერი",
+    listBack: "რეპორტზე დაბრუნება",
+    listEmpty: "ამ ფილტრით დავალება ვერ მოიძებნა",
+    listSummary: "{count} დავალება · {range}",
+    filterAll: "ყველა დავალება",
+    filterApproved: "დადასტურებული",
+    filterReturned: "დაბრუნებული",
+    filterLate: "ვადის დარღვევით ჩაბარებული",
+    filterOpen: "დაუსრულებელი",
+    filterTimed: "დროით აღრიცხული",
+    filterRated: "თვითშეფასებით",
   },
 
   // -------------------------------------------------------------- review ---

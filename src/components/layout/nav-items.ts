@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Settings,
   Sun,
+  TrendingUp,
   User,
   Users,
   type LucideIcon,
@@ -32,6 +33,7 @@ export const parentNavItems: NavItem[] = [
   { href: "/parent/children", label: ka.nav.children, icon: Users },
   { href: "/parent/schedule", label: ka.nav.schedule, icon: CalendarDays },
   { href: "/parent/subjects", label: ka.nav.subjects, icon: BookOpen },
+  { href: "/parent/reports", label: ka.nav.reports, icon: TrendingUp },
   { href: "/parent/settings", label: ka.nav.settings, icon: Settings },
 ];
 
