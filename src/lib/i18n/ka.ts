@@ -650,6 +650,8 @@ export const ka = {
     submittedTitle: "{child}-მა დავალება ჩააბარა",
     approvedTitle: "დავალება მიღებულია",
     redoTitle: "დავალება გადასაკეთებელია",
+    approvedByHelperTitle: "{actor}-მა დაადასტურა {child}-ის დავალება",
+    redoByHelperTitle: "{actor}-მა დააბრუნა {child}-ის დავალება",
     messageTitle: "ახალი შეტყობინება — {author}",
     messagesTitle: "{count} ახალი შეტყობინება",
   },

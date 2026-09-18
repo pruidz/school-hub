@@ -3298,3 +3298,88 @@ describe('22. the realtime publication contains what 0009 intended', () => {
     }),
   );
 });
+
+describe('23. a parent is told when a helper decides (0011)', () => {
+  test(
+    'a helper approving notifies the child AND the parent, naming the helper',
+    tx(async () => {
+      await s.asUser(ID.helperReviewUser);
+      await s.q(
+        `update public.assignments
+            set status = 'approved', review_comment = 'kargia'
+          where id = '${ID.cAssignment}'`,
+      );
+
+      const child = await notificationsAbout(
+        ID.childCUser,
+        'assignment_approved',
+        ID.cAssignment,
+      );
+      assert.equal(
+        child.length,
+        1,
+        'proves: the child still hears the decision exactly as before 0011',
+      );
+
+      const parent = await notificationsAbout(
+        ID.parent2User,
+        'assignment_approved_by_helper',
+        ID.cAssignment,
+      );
+      assert.equal(
+        parent.length,
+        1,
+        'proves: delegating "can review" does not mean the parent stops being told -- ' +
+          'without this a tutor could close the loop with no parent in it',
+      );
+      assert.ok(
+        parent[0].payload?.actor_name,
+        'proves: the row names who decided, so the parent can tell it was not them',
+      );
+    }),
+  );
+
+  test(
+    'a helper returning work notifies the parent and carries the comment',
+    tx(async () => {
+      await s.asUser(ID.helperReviewUser);
+      await s.q(
+        `update public.assignments
+            set status = 'redo', review_comment = 'meore da mesame arasworia'
+          where id = '${ID.cAssignment}'`,
+      );
+
+      const parent = await notificationsAbout(
+        ID.parent2User,
+        'assignment_redo_by_helper',
+        ID.cAssignment,
+      );
+      assert.equal(parent.length, 1, 'proves: a return is reported too, not only an approval');
+      assert.equal(
+        parent[0].payload?.preview,
+        'meore da mesame arasworia',
+        'proves: the parent sees what the helper actually told the child',
+      );
+    }),
+  );
+
+  test(
+    'a parent reviewing does NOT notify themselves or the other parent',
+    tx(async () => {
+      const before = (await notificationsFor(ID.parent2User)).length;
+
+      await s.asUser(ID.parent2User);
+      await s.q(
+        `update public.assignments set status = 'approved' where id = '${ID.cAssignment}'`,
+      );
+
+      const after = await notificationsFor(ID.parent2User);
+      assert.equal(
+        after.length,
+        before,
+        'proves: the by_helper rows fire on the reviewer NOT being a parent, not on ' +
+          'the review happening -- ordinary parent reviews stay as quiet as they were',
+      );
+    }),
+  );
+});

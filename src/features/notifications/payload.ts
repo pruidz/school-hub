@@ -83,6 +83,16 @@ export function notificationTitle(item: NotificationItem): string {
       return t("notifications.submittedTitle", { child: who });
     case "assignment_approved":
       return ka.notifications.approvedTitle;
+    case "assignment_approved_by_helper":
+      return t("notifications.approvedByHelperTitle", {
+        actor: actorName ?? ka.messages.unknownAuthor,
+        child: who,
+      });
+    case "assignment_redo_by_helper":
+      return t("notifications.redoByHelperTitle", {
+        actor: actorName ?? ka.messages.unknownAuthor,
+        child: who,
+      });
     case "assignment_redo":
       return ka.notifications.redoTitle;
     case "message_posted":
@@ -100,6 +110,7 @@ export function notificationSubtitle(item: NotificationItem): string {
 
   if (item.type === "message_posted" && preview) return preview;
   if (item.type === "assignment_redo" && preview) return preview;
+  if (item.type === "assignment_redo_by_helper" && preview) return preview;
 
   const parts = [subjectName, title].filter(
     (part): part is string => Boolean(part),

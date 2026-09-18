@@ -15,6 +15,9 @@ export const NOTIFICATION_TYPES = [
   "assignment_submitted",
   "assignment_approved",
   "assignment_redo",
+  // 0011: a helper with review rights decided; the parents are told too.
+  "assignment_approved_by_helper",
+  "assignment_redo_by_helper",
   "message_posted",
 ] as const;
 
